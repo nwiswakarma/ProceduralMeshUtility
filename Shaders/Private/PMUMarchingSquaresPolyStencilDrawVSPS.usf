@@ -1,0 +1,76 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+
+#include "/Engine/Private/Common.ush"
+
+float2 _DrawExts;
+
+void DrawStencilMaskVS(
+	in  float2 Position : ATTRIBUTE0,
+	out float4 OutPos   : SV_POSITION
+    )
+{
+    float2 pt = (Position.xy/_DrawExts);
+
+    // Flip y-axis within render target dimension
+    pt.y  = (2.f-pt.y);
+    pt   -= 1.f;
+
+	OutPos = float4(pt, 0, 1);
+}
+
+void DrawStencilMaskPS(
+	out uint OutColor : SV_Target0
+    )
+{
+    OutColor = 1;
+}
+
+void DrawStencilEdgeVS(
+	in  float3 Position : ATTRIBUTE0,
+	out nointerpolation uint OutColor : TEXCOORD0,
+	out float4 OutPos : SV_POSITION
+    )
+{
+    float2 pt = (Position.xy/_DrawExts);
+    float  id = Position.z;
+
+    // Flip y-axis within render target dimension
+    pt.y  = (2.f-pt.y);
+    pt   -= 1.f;
+
+    OutColor = 1+uint(id+.5f);
+	OutPos   = float4(pt, 0, 1);
+}
+
+void DrawStencilEdgePS(
+	nointerpolation uint InColor : TEXCOORD0,
+	out uint OutColor : SV_Target0
+    )
+{
+    OutColor = InColor;
+}

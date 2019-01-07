@@ -1,0 +1,325 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+
+/*------------------------------------------------------------------------------
+	Compile time parameters:
+		THREAD_SIZE_X - The number of threads (x) to launch per workgroup
+		THREAD_SIZE_Y - The number of threads (y) to launch per workgroup
+------------------------------------------------------------------------------*/
+
+#include "PMUMarchingSquaresCommon.ush"
+
+#define FEATURE_APPLY    1
+#define FEATURE_VALIDATE 2
+
+Buffer<uint>              VoxelStateData;
+
+RWBuffer<uint>            OutVoxelStateData;
+RWStructuredBuffer<uint4> OutVoxelFeatureData;
+
+RWTexture2D<float4> OutDebugTexture;
+
+float2 ComputeNormal(float2 xy, float2 center, uint fillType, uint againstType)
+{
+    float2 n = { 1, 0 };
+    float2 d = (fillType > againstType) ? (xy-center) : (center-xy);
+
+    [flatten]
+    if (dot(d, d) > 0.f)
+    {
+        n = normalize(d);
+    }
+
+    return n;
+}
+
+float2 ValidateNormalX(uint vMinState, uint xMaxState, float2 nEdgeX)
+{
+    [flatten]
+    if (vMinState < xMaxState)
+    {
+        [flatten]
+        if (nEdgeX.x > 0.f)
+        {
+            nEdgeX = -nEdgeX;
+        }
+    }
+    else
+    if (nEdgeX.x < 0.f)
+    {
+        nEdgeX = -nEdgeX;
+    }
+
+    return nEdgeX;
+}
+
+float2 ValidateNormalY(uint vMinState, uint yMaxState, float2 nEdgeY)
+{
+    [flatten]
+    if (vMinState < yMaxState)
+    {
+        [flatten]
+        if (nEdgeY.y > 0.f)
+        {
+            nEdgeY = -nEdgeY;
+        }
+    }
+    else
+    if (nEdgeY.y < 0.f)
+    {
+        nEdgeY = -nEdgeY;
+    }
+
+    return nEdgeY;
+}
+
+[numthreads(THREAD_SIZE_X,THREAD_SIZE_Y,1)]
+void VoxelWriteStateKernel(uint3 tid : SV_DispatchThreadID)
+{
+    //const uint _SX = PMUMSqWriteVoxelStateParamsCS.DimensionX;
+    //const uint _SY = PMUMSqWriteVoxelStateParamsCS.DimensionY;
+    //const uint _FillType = PMUMSqWriteVoxelStateParamsCS.FillType;
+
+    //const float2 _StencilCenter = PMUMSqWriteVoxelStateParamsCS.StencilCenter;
+    //const float  _StencilRadius = PMUMSqWriteVoxelStateParamsCS.StencilRadius;
+
+    const uint tidx = tid.x + tid.y * _MapDim.x;
+
+    float2 vPos  = float2(tid.xy) - _StencilCenter;
+    float2 cPos = vPos + 0.5f;
+
+    bool bVoxelFilled  = dot(vPos, vPos) <= (_StencilRadius * _StencilRadius);
+    bool bCenterFilled = dot(cPos, cPos) <= (_StencilRadius * _StencilRadius);
+
+    uint lastState = OutVoxelStateData[tidx];
+    uint lastVState = lastState & 0xFF;
+    uint lastCState = (lastState >> 8) & 0xFF;
+    uint fillType = _FillType & 0xFF;
+
+    uint vState = bVoxelFilled  ? _FillType : lastVState;
+    uint cState = bCenterFilled ? _FillType : lastCState;
+
+    OutVoxelStateData[tidx] = vState | (cState << 8);
+    OutDebugTexture[tid.xy] = 0; //bVoxelFilled;
+}
+
+[numthreads(THREAD_SIZE_X,THREAD_SIZE_Y,1)]
+void VoxelWriteFeatureKernel(uint3 tid : SV_DispatchThreadID)
+{
+    //const uint _SX = PMUMSqWriteVoxelFeatureParamsCS.DimensionX;
+    //const uint _SY = PMUMSqWriteVoxelFeatureParamsCS.DimensionY;
+    //const uint _FillType = PMUMSqWriteVoxelFeatureParamsCS.FillType;
+
+    //const float2 _StencilCenter = PMUMSqWriteVoxelFeatureParamsCS.StencilCenter;
+    //const float  _StencilRadius = PMUMSqWriteVoxelFeatureParamsCS.StencilRadius;
+
+    const uint2 GDim = _MapDim; //float2(_SX, _SY);
+    const uint2 CDim = GDim-1;
+
+    const uint2 cid  = tid.xy;
+    const uint  tidx = tid.x + tid.y * GDim.x;
+
+    // Write cell data to local cache if required
+
+    // Skip out-of-bounds cells
+    if (any(cid >= CDim))
+    {
+        return;
+    }
+
+    uint2  uEdgeXY = OutVoxelFeatureData[tidx].xy;
+    float2 fEdgeXY = UnpackSaturatedFloat2(uEdgeXY);
+    float2 nEdgeX = UnpackNormalizedFloat(uEdgeXY.x >> 8);
+    float2 nEdgeY = UnpackNormalizedFloat(uEdgeXY.y >> 8);
+
+    float2 vMin = cid;
+    float2 vMax = cid + 1;
+    float4 vPos = { vMin, vMax };
+
+    uint4 indices = {
+        tidx       ,
+        tidx+1     ,
+        tidx+GDim.x,
+        0
+        };
+
+    uint vMinStateData = VoxelStateData[indices[0]];
+    uint xMaxStateData = VoxelStateData[indices[1]];
+    uint yMaxStateData = VoxelStateData[indices[2]];
+
+    uint vMinState = vMinStateData & 0xFF;
+    uint xMaxState = xMaxStateData & 0xFF;
+    uint yMaxState = yMaxStateData & 0xFF;
+
+    // Calculate feature data
+
+    const float2 center = _StencilCenter;
+    const float  radiusSq = _StencilRadius * _StencilRadius;
+
+    float2 vMinSq = vMin - center;
+    vMinSq *= vMinSq;
+
+    float2 vMaxSq = vMax - center;
+    vMaxSq *= vMaxSq;
+
+    bool bMinToMax = (vMinState == _FillType);
+    float edgeOrder = bMinToMax ? 1 : -1;
+    uint2 normalStates = bMinToMax ? vMinState.xx : uint2(xMaxState, yMaxState);
+    float2 distToCenter = (center + sqrt(radiusSq.xx-vMinSq.yx)*edgeOrder) - vMin;
+
+    uint applyX = 0;
+    uint applyY = 0;
+
+    // Find feature case (X-axis)
+
+    [flatten]
+    if (vMinState != xMaxState)
+    {
+        [flatten]
+        if (vMinState == _FillType)
+        {
+            [flatten]
+            if ((vMinSq.x + vMinSq.y) <= radiusSq)
+            {
+                [flatten]
+                if ((uEdgeXY.x == ~0U) || fEdgeXY.x < distToCenter.x)
+                {
+                    applyX = FEATURE_APPLY;
+                }
+                else
+                {
+                    applyX = FEATURE_VALIDATE;
+                }
+            }
+        }
+        else
+        if (xMaxState == _FillType)
+        {
+            [flatten]
+            if ((vMaxSq.x + vMinSq.y) <= radiusSq)
+            {
+                [flatten]
+                if ((uEdgeXY.x == ~0U) || fEdgeXY.x > distToCenter.x)
+                {
+                    applyX = FEATURE_APPLY;
+                }
+                else
+                {
+                    applyX = FEATURE_VALIDATE;
+                }
+            }
+        }
+    }
+
+    // Find feature case (Y-axis)
+
+    [flatten]
+    if (vMinState != yMaxState)
+    {
+        [flatten]
+        if (vMinState == _FillType)
+        {
+            [flatten]
+            if ((vMinSq.y + vMinSq.x) <= radiusSq)
+            {
+                [flatten]
+                if ((uEdgeXY.y == ~0U) || fEdgeXY.y < distToCenter.y)
+                {
+                    applyY = FEATURE_APPLY;
+                }
+                else
+                {
+                    applyY = FEATURE_VALIDATE;
+                }
+            }
+        }
+        else
+        if (yMaxState == _FillType)
+        {
+            [flatten]
+            if ((vMaxSq.y + vMinSq.x) <= radiusSq)
+            {
+                [flatten]
+                if ((uEdgeXY.y == ~0U) || fEdgeXY.y > distToCenter.y)
+                {
+                    applyY = FEATURE_APPLY;
+                }
+                else
+                {
+                    applyY = FEATURE_VALIDATE;
+                }
+            }
+        }
+    }
+
+    // Apply or validate feature case (edge value and normal)
+
+    [flatten]
+    if (applyX == FEATURE_APPLY)
+    {
+        float2 edgeNormalX = ComputeNormal(
+            float2(distToCenter.x+vMin.x, vMin.y),
+            center,
+            _FillType,
+            normalStates.x
+            );
+
+        uEdgeXY.x = (PackSaturateFloat(distToCenter.x) << 0) |
+                    (PackNormalizedFloat2(edgeNormalX) << 8);
+    }
+    else
+    if (applyX == FEATURE_VALIDATE)
+    {
+        float2 edgeNormal = ValidateNormalX(vMinState, xMaxState, nEdgeX);
+        uEdgeXY.x = (uEdgeXY.x & 0xFF) | (PackNormalizedFloat2(edgeNormal) << 8);
+    }
+
+    [flatten]
+    if (applyY == FEATURE_APPLY)
+    {
+        float2 edgeNormalY = ComputeNormal(
+            float2(vMin.x, distToCenter.y+vMin.y),
+            center,
+            _FillType,
+            normalStates.y
+            );
+
+        uEdgeXY.y = (PackSaturateFloat(distToCenter.y) << 0) |
+                    (PackNormalizedFloat2(edgeNormalY) << 8);
+    }
+    else
+    if (applyY == FEATURE_VALIDATE)
+    {
+        float2 edgeNormal = ValidateNormalY(vMinState, yMaxState, nEdgeY);
+        uEdgeXY.y = (uEdgeXY.y & 0xFF) | (PackNormalizedFloat2(edgeNormal) << 8);
+    }
+
+    // Write feature data
+
+    OutVoxelFeatureData[tidx] = uint4(uEdgeXY, 0, 0);
+    OutDebugTexture[tid.xy] = any((uEdgeXY.xy & 0xFF) != 0xFF);
+}

@@ -1,0 +1,144 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+
+/*------------------------------------------------------------------------------
+	Compile time parameters:
+		THREAD_SIZE_X - The number of threads (x) to launch per workgroup
+		THREAD_SIZE_Y - The number of threads (y) to launch per workgroup
+------------------------------------------------------------------------------*/
+
+#include "/Engine/Private/Common.ush"
+
+#define INDEX_PER_QUAD 6
+#define HEIGHT_SCALE   128.f
+
+#ifndef PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING
+#define PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING 0
+#endif
+
+struct VertexType
+{
+	float3 Position;
+	float2 TextureCoordinate;
+	uint TangentX;
+	uint TangentZ;
+	uint Color;
+};
+
+RWStructuredBuffer<VertexType> OutVertexData;
+RWBuffer<uint> OutIndexData;
+
+Texture2D HeightMap;
+SamplerState HeightMapSampler;
+
+uint2 _Dimension;
+float _HeightScale;
+bool  _bReverseWinding;
+
+uint PackNormalizedFloat4(float4 v)
+{
+	uint4 n = uint4((v+1.0f) * 127.4999f) & 0xFF;
+	return n.x | (n.y << 8) | (n.z << 16) | (n.w << 24);
+}
+
+[numthreads(THREAD_SIZE_X,THREAD_SIZE_Y,1)]
+void MainCS(uint3 tid : SV_DispatchThreadID)
+{
+	const uint2 VertexId = tid.xy;
+
+    // Skip out of bounds threads
+    if (any(VertexId >= _Dimension))
+	{
+		return;
+	}
+
+    const uint Stride = _Dimension.x;
+
+    const uint2 QuadDim = _Dimension-1;
+    const uint  QuadStride = QuadDim.x;
+
+    // Write vertex
+
+    const float3 uvo = { 1.f / _Dimension, 0 };
+    const float2 uv  = float2(VertexId) * uvo;
+
+    // Sample height values and calculate tangent vectors
+
+    float hv = Texture2DSample(HeightMap, HeightMapSampler, uv).x * _HeightScale;
+    float hN = Texture2DSample(HeightMap, HeightMapSampler, uv+uvo.zy).x * _HeightScale;
+    float hE = Texture2DSample(HeightMap, HeightMapSampler, uv+uvo.xz).x * _HeightScale;
+    float hW = Texture2DSample(HeightMap, HeightMapSampler, uv-uvo.xz).x * _HeightScale;
+    float hS = Texture2DSample(HeightMap, HeightMapSampler, uv-uvo.zy).x * _HeightScale;
+    float2 hWESN = float2(hE, hN) - float2(hW, hS);
+
+    float3 n = normalize(float3(-hWESN, 1));
+    float3 t = normalize(float3(1, 0, hWESN.x * .5f));
+
+    // Construct and assign vertex
+
+    VertexType Vertex;
+    Vertex.Position = float3(VertexId, hv);
+	Vertex.TextureCoordinate = VertexId;
+	Vertex.TangentX = PackNormalizedFloat4(float4(t, 0));
+	Vertex.TangentZ = PackNormalizedFloat4(float4(n, 1));
+	Vertex.Color = ~0;
+
+    const uint VertexIndex = dot(VertexId, uint2(1, Stride));
+    OutVertexData[VertexIndex] = Vertex;
+
+    // Write index except on the last axis dimension threads
+
+    if (all(VertexId < QuadDim))
+	{
+        const uint ids[4] = {
+            dot(VertexId              , uint2(1, Stride)),
+            dot(VertexId + uint2(1, 0), uint2(1, Stride)),
+            dot(VertexId + uint2(1, 1), uint2(1, Stride)),
+            dot(VertexId + uint2(0, 1), uint2(1, Stride))
+            };
+
+        const uint IndexOffset = dot(VertexId, uint2(1, QuadStride)) * INDEX_PER_QUAD;
+
+#if PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING
+        OutIndexData[IndexOffset  ] = ids[0];
+        OutIndexData[IndexOffset+1] = ids[3];
+        OutIndexData[IndexOffset+2] = ids[1];
+
+        OutIndexData[IndexOffset+3] = ids[3];
+        OutIndexData[IndexOffset+4] = ids[2];
+        OutIndexData[IndexOffset+5] = ids[1];
+#else
+        OutIndexData[IndexOffset  ] = ids[0];
+        OutIndexData[IndexOffset+1] = ids[1];
+        OutIndexData[IndexOffset+2] = ids[3];
+
+        OutIndexData[IndexOffset+3] = ids[1];
+        OutIndexData[IndexOffset+4] = ids[2];
+        OutIndexData[IndexOffset+5] = ids[3];
+#endif
+	}
+}

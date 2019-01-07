@@ -1,0 +1,221 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+// 
+
+struct FVertexFactoryInput
+{
+    float4 Position      : ATTRIBUTE0;
+    float4 Color         : ATTRIBUTE1;
+    float2 LineStart     : ATTRIBUTE2;
+    float2 LineEnd       : ATTRIBUTE3;
+    float4 LineAttribute : ATTRIBUTE4;
+};
+
+struct FVertexFactoryInterpolantsVSToPS
+{
+#if INTERPOLATE_VERTEX_COLOR
+    half4  Color : COLOR0;
+#endif
+
+#if NUM_MATERIAL_TEXCOORDS
+	#if NUM_MATERIAL_TEXCOORDS >= 4
+    float4 LineAttributes[2] : TEXCOORD0;
+	#endif	// >= 4
+#endif  //NUM_MATERIAL_TEXCOORDS
+
+#if INSTANCED_STEREO
+    nointerpolation uint PackedEyeIndex : PACKED_EYE_INDEX;
+#endif
+};
+
+struct FVertexFactoryIntermediates
+{
+    float4 WorldPosition;
+    float4 LineAttribute;
+    float4 LineGeom;
+    half4  Color;
+};
+
+// COMMON FUNCTIONS
+
+float4 GetColor(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+#if INTERPOLATE_VERTEX_COLOR
+    return Interpolants.Color;
+#else
+    return 0;
+#endif
+}
+
+void SetColor(inout FVertexFactoryInterpolantsVSToPS Interpolants, float4 InValue)
+{
+#if INTERPOLATE_VERTEX_COLOR
+	Interpolants.Color = InValue;
+#endif
+}
+
+// STANDARD FUNCTIONS
+
+float4 TransformLocalToTranslatedWorld(float3 LocalPosition)
+{
+	float3 RotatedPosition = Primitive.LocalToWorld[0].xyz * LocalPosition.xxx + Primitive.LocalToWorld[1].xyz * LocalPosition.yyy + Primitive.LocalToWorld[2].xyz * LocalPosition.zzz;
+	return float4(RotatedPosition + (Primitive.LocalToWorld[3].xyz + ResolvedView.PreViewTranslation.xyz),1);
+}
+
+FVertexFactoryIntermediates GetVertexFactoryIntermediates(FVertexFactoryInput Input)
+{
+    FVertexFactoryIntermediates Intermediates;
+
+    const float LineRadius = Input.LineAttribute.x;
+    const float LineHeight = Input.LineAttribute.y;
+    const float LineHeightOffset = -Input.LineAttribute.w;
+    const float LineHeadingAngle = -Input.LineAttribute.z;
+
+    const float2 Line0 = Input.LineStart;
+    const float2 Line1 = Input.LineEnd;
+    const float2 LineDt = (Line1-Line0) * 0.5f;
+    const float2 LineCenter = Line0 + LineDt;
+    const float4 Offset = { LineHeightOffset, LineCenter.y, LineCenter.x, 0 };
+    const float4 Size = { LineHeight, LineRadius, length(LineDt)+LineRadius, 1 };
+
+    const float RotRad = LineHeadingAngle;
+    const float RotCos = cos(RotRad);
+    const float RotSin = sin(RotRad);
+
+    float2x2 rot = {
+        float2( RotCos, RotSin),
+        float2(-RotSin, RotCos)
+        };
+
+    float3x3 Rot3x3 = {
+        1, 0, 0, 
+        0, rot[0],
+        0, rot[1]
+        };
+
+    float3 LSPosition = Input.Position.xyz * Size.xyz;
+	LSPosition = mul(LSPosition, Rot3x3) + Offset.xyz;
+
+    Intermediates.WorldPosition = TransformLocalToTranslatedWorld(LSPosition);
+    Intermediates.LineAttribute = float4(LineHeight, LineRadius, RotRad, LineHeightOffset);
+    Intermediates.LineGeom      = float4(Line0, Line1);
+
+    // Swizzle vertex color
+    Intermediates.Color = Input.Color FCOLOR_COMPONENT_SWIZZLE;
+
+    return Intermediates;
+}
+
+FMaterialPixelParameters GetMaterialPixelParameters(FVertexFactoryInterpolantsVSToPS Interpolants, float4 SvPosition)
+{
+    FMaterialPixelParameters Result = MakeInitializedMaterialPixelParameters();
+
+#if NUM_MATERIAL_TEXCOORDS
+	#if NUM_MATERIAL_TEXCOORDS >= 4
+		Result.TexCoords[0] = Interpolants.LineAttributes[0].xy;
+		Result.TexCoords[1] = Interpolants.LineAttributes[0].zw;
+		Result.TexCoords[2] = Interpolants.LineAttributes[1].xy;
+		Result.TexCoords[3] = Interpolants.LineAttributes[1].zw;
+	#endif	// >= 4
+#endif  //NUM_MATERIAL_TEXCOORDS
+
+    Result.VertexColor = GetColor(Interpolants);
+    Result.TwoSidedSign = 1;
+    return Result;
+}
+
+FMaterialVertexParameters GetMaterialVertexParameters(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float3 WorldPosition, float3x3 TangentToLocal)
+{
+    FMaterialVertexParameters Result = (FMaterialVertexParameters) 0;
+    Result.WorldPosition  = WorldPosition;
+	Result.VertexColor    = Intermediates.Color;
+    Result.TangentToWorld = mul(TangentToLocal, GetLocalToWorld3x3()); 
+    return Result;
+}
+
+float4 VertexFactoryGetWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+    return Intermediates.WorldPosition;
+}
+
+float4 VertexFactoryGetRasterizedWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float4 TranslatedWorldPosition)
+{
+    return TranslatedWorldPosition;
+}
+
+float3 VertexFactoryGetPositionForVertexLighting(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float3 TranslatedWorldPosition)
+{
+    return TranslatedWorldPosition;
+}
+
+FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, FMaterialVertexParameters VertexParameters)
+{
+	FVertexFactoryInterpolantsVSToPS Interpolants;
+	Interpolants = (FVertexFactoryInterpolantsVSToPS) 0;
+
+#if NUM_MATERIAL_TEXCOORDS
+	#if NUM_MATERIAL_TEXCOORDS >= 4
+		Interpolants.LineAttributes[0].xy = Intermediates.LineGeom.xy;
+		Interpolants.LineAttributes[0].zw = Intermediates.LineGeom.zw;
+		Interpolants.LineAttributes[1].xy = Intermediates.LineAttribute.xy;
+		Interpolants.LineAttributes[1].zw = Intermediates.LineAttribute.zw;
+	#endif	// >= 4
+#endif  //NUM_MATERIAL_TEXCOORDS
+
+	SetColor(Interpolants, Intermediates.Color);
+
+#if INSTANCED_STEREO
+    Interpolants.PackedEyeIndex = 0;
+#endif
+
+    return Interpolants;
+}
+
+float4 VertexFactoryGetPreviousWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
+{
+    return Intermediates.WorldPosition;
+}
+
+float3x3 VertexFactoryGetTangentToLocal( FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates )
+{
+    float3x3 TangentToLocal;
+    TangentToLocal[0] = float3(1,0,0);
+    TangentToLocal[1] = float3(0,1,0);
+    TangentToLocal[2] = float3(0,0,1);
+    return TangentToLocal;
+}
+
+#if INSTANCED_STEREO
+uint VertexFactoryGetEyeIndex(uint InstanceId)
+{
+    return 0;
+}
+#endif
+
+float4 VertexFactoryGetTranslatedPrimitiveVolumeBounds(FVertexFactoryInterpolantsVSToPS Interpolants)
+{
+    return 0;
+}

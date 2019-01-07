@@ -1,0 +1,51 @@
+{
+	"FileVersion" : 1,
+	"Version" : 1,
+	"VersionName" : "1.0.0",
+	"FriendlyName" : "Procedural Mesh Utility",
+	"CreatedBy" : "Nuraga Wiswakarma", 
+	"Description" : "",
+	"Category" : "Programming",
+	"EnabledByDefault" : "true",
+	"CanContainContent" : "false",
+	"Modules" :
+	[		
+		{
+			"Name" : "ProceduralMeshUtility",
+			"Type" : "Runtime",
+            "LoadingPhase": "PostConfigInit",
+			"WhitelistPlatforms" : [ "Win64", "Win32", "Mac" ]
+		}
+	],
+	"Plugins":
+    [
+		{
+			"Name" : "AGGPlugin",
+			"Enabled": true
+		},
+		{
+			"Name" : "AJClipperPlugin",
+			"Enabled": true
+		},
+		{
+			"Name" : "EarcutPlugin",
+			"Enabled": true
+		},
+		{
+			"Name" : "GenericWorkerThread",
+			"Enabled": true
+		},
+		{
+			"Name" : "JCVoronoiPlugin",
+			"Enabled": true
+		},
+		{
+			"Name" : "UnrealFastNoisePlugin",
+			"Enabled": true
+		},
+		{
+			"Name" : "Substance",
+			"Enabled": true
+		}
+	]
+}

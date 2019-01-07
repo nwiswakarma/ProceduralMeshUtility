@@ -1,0 +1,144 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+
+#include "/Engine/Private/Common.ush"
+
+Texture2D SourceMap;
+Texture2D WeightMap;
+
+SamplerState SourceMapSampler;
+SamplerState WeightMapSampler;
+
+uint3 _ComputeConstants;
+float _InclineFactor;
+
+#ifndef USE_BLEND_INCLINE
+#define USE_BLEND_INCLINE 0
+#endif
+
+#ifndef USE_SAMPLE_AX
+#define USE_SAMPLE_AX 0
+#endif
+
+#if USE_SAMPLE_AX
+#define SAMPLE_COUNT 8
+#else
+#define SAMPLE_COUNT 4
+#endif
+
+#define USE_INCLINE_FACTOR _ComputeConstants.x
+#define USE_INVERT_INCLINE _ComputeConstants.y
+#define USE_DILATE_FILTER  _ComputeConstants.z
+
+float GetValue(float2 uv)
+{
+    return Texture2DSample(SourceMap, SourceMapSampler, uv).r;
+}
+
+void MainPS(
+	FScreenVertexOutput Input,
+	out float4 OutColor : SV_Target0
+	)
+{
+    float2 uv = Input.UV;
+    float ox;
+    float oy;
+    float us;
+
+    // Find offset unit and offset size
+
+    SourceMap.GetDimensions(ox, oy);
+
+    ox = 1.f / ox;
+    oy = 1.f / oy;
+
+    us = ox + oy;
+
+    // Height sample
+
+    float    h0  = GetValue(uv);
+    float2x4 hvs = {
+        {
+            GetValue(uv+float2( ox,   0)), // E
+            GetValue(uv+float2(-ox,   0)), // W
+            GetValue(uv+float2(  0,  oy)), // N
+            GetValue(uv+float2(  0, -oy))  // S
+        },
+        {
+#if USE_SAMPLE_AX
+            GetValue(uv+float2( ox,  oy)), // NE
+            GetValue(uv+float2(-ox,  oy)), // NW
+            GetValue(uv+float2( ox, -oy)), // SE
+            GetValue(uv+float2(-ox, -oy))  // SW
+#else
+            0, 0, 0, 0
+#endif
+        } };
+
+    
+    float erodeNum  = 1;
+    float heightSum = h0;
+    float result;
+
+    float2x4 filterKernel = USE_DILATE_FILTER ? (hvs > h0) : (hvs < h0);
+
+    erodeNum  += dot(filterKernel[0], filterKernel[0]);
+    heightSum += dot(filterKernel[0], hvs[0]);
+
+#if USE_SAMPLE_AX
+    erodeNum  += dot(filterKernel[1], filterKernel[1]);
+    heightSum += dot(filterKernel[1], hvs[1]);
+#endif
+
+    result = heightSum / erodeNum;
+
+#if USE_BLEND_INCLINE
+    {
+        float3 normal  = normalize(float3(hvs[0].xz-hvs[0].yw, us));
+        float  incline = dot(normal, float3(0,0,1));
+
+        [flatten]
+        if (USE_INCLINE_FACTOR)
+        {
+            incline = incline - _InclineFactor * (erodeNum / SAMPLE_COUNT);
+        }
+        else
+        if (USE_INVERT_INCLINE)
+        {
+            incline = 1.0f - incline;
+        }
+
+        result = lerp(result, h0, saturate(incline));
+    }
+#endif
+
+    // Get weighted result
+    float weight = Texture2DSample(WeightMap, WeightMapSampler, uv).r;
+    result = lerp(result, h0, saturate(weight));
+
+    OutColor = result;
+}

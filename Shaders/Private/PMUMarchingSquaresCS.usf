@@ -1,0 +1,570 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+
+/*------------------------------------------------------------------------------
+	Compile time parameters:
+		THREAD_SIZE_X - The number of threads (x) to launch per workgroup
+		THREAD_SIZE_Y - The number of threads (y) to launch per workgroup
+------------------------------------------------------------------------------*/
+
+#include "PMUMarchingSquaresCommon.ush"
+
+#define CELL_CLASS_COUNT    20
+#define MAX_TRI_PER_CELL    4
+#define MAX_INDEX_PER_CELL  3 * MAX_TRI_PER_CELL
+#define MAX_VERTEX_PER_CELL 6
+
+#ifndef PMU_MARCHING_SQUARES_GENERATE_WALLS
+#define PMU_MARCHING_SQUARES_GENERATE_WALLS 0
+#endif
+
+#define VERTEX_COUNT _GeomCount.x
+#define INDEX_COUNT  _GeomCount.y
+
+#define BASE_OFFSET          _HeightOffset.x
+#define BASE_OFFSET_SCALE    _HeightOffset.y
+#define SURFACE_OFFSET_SCALE _HeightOffset.z
+#define EXTRUDE_OFFSET_SCALE _HeightOffset.w
+
+#define SURFACE_HEIGHT_SCALE _HeightScale.x
+#define EXTRUDE_HEIGHT_SCALE _HeightScale.y
+
+#define HEIGHT_SAMPLE_LEVEL _SampleLevel.x
+#define OFFSET_SAMPLE_LEVEL _SampleLevel.y
+
+#define SAMPLE_OFFSET _SampleOffset.xy
+#define SAMPLE_SCALE  _SampleOffset.z
+
+// Cell triangulation class
+//
+// (v & 0x000F) Cell geometry type
+// (v & 0x00F0) Cell vertex count
+// (v & 0x0F00) Cell triangle count
+static const uint CellClass[CELL_CLASS_COUNT] =
+{
+    0x000, 0x131, 0x111, 0x223,
+    0x111, 0x223, 0x222, 0x314,
+    0x101, 0x232, 0x213, 0x324,
+    0x213, 0x324, 0x324, 0x213,
+
+    0x425, 0x435, 0x000, 0x000,
+};
+
+// Cell geometry data
+// Each entry represent cell triangle indices
+static const uint GeomData[6][MAX_INDEX_PER_CELL] =
+{
+    { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    {  0,  1,  2, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    {  0,  1,  2,  3,  4,  5, -1, -1, -1, -1, -1, -1 },
+    {  0,  1,  2,  0,  2,  3, -1, -1, -1, -1, -1, -1 },
+    {  0,  1,  4,  1,  3,  4,  1,  2,  3, -1, -1, -1 },
+    {  0,  1,  5,  0,  5,  3,  4,  5,  1,  4,  1,  2 },
+};
+
+// Cell vertex data
+//
+// (v & 0x000F) cell voxel index A
+// (v & 0x00F0) cell voxel index B
+// (v & 0x0F00) cell edge feature index
+static const uint VertexData[CELL_CLASS_COUNT][3] =
+{
+    { 0,      0,      0      },
+    { 0x0000, 0x0001, 0x0102 },
+    { 0x0001, 0,      0      },
+    { 0x0000, 0x0102, 0      },
+
+    { 0x0102, 0,      0      },
+    { 0x0000, 0x0001, 0      },
+    { 0x0001, 0x0102, 0      },
+    { 0x0000, 0,      0      },
+
+    { 0,      0,      0      },
+    { 0x0000, 0x0001, 0x0102 },
+    { 0x0001, 0,      0      },
+    { 0x0000, 0x0102, 0      },
+
+    { 0x0102, 0,      0      },
+    { 0x0000, 0x0001, 0      },
+    { 0x0001, 0x0102, 0      },
+    { 0x0000, 0,      0      },
+
+    { 0x0001, 0x0102, 0      },
+    { 0x0000, 0x0001, 0x0102 },
+    { 0,      0,      0      },
+    { 0,      0,      0      },
+};
+
+// Cell local vertex map
+//
+// (v & 0x000F) Vertex 0 index
+// (v & 0x00F0) Vertex 1 index
+// (v & 0x0F00) Vertex 2 index
+static const uint VertexMap[CELL_CLASS_COUNT] =
+{
+    0xFFF, 0x210, 0xF0F, 0x1F0,
+    0x0FF, 0xF10, 0x10F, 0xFF0,
+    0xFFF, 0x210, 0xF0F, 0x1F0,
+    0x0FF, 0xF10, 0x10F, 0xFF0,
+
+    0x10F, 0x210, 0xFFF, 0xFFF
+};
+
+// Cell edge data
+// Each entry represent vertex index required to triangluate a cell
+static const uint EdgeData[CELL_CLASS_COUNT][MAX_VERTEX_PER_CELL] =
+{
+    { 0,    0,    0,    0,    0,    0,   },
+    { 0x04, 0x05, 0x00, 0,    0,    0,   },
+    { 0x04, 0x01, 0x07, 0,    0,    0,   },
+    { 0x05, 0x00, 0x01, 0x07, 0,    0,   },
+
+    { 0x05, 0x06, 0x02, 0,    0,    0,   },
+    { 0x00, 0x04, 0x06, 0x02, 0,    0,   },
+    { 0x04, 0x01, 0x07, 0x05, 0x06, 0x02 },
+    { 0x06, 0x02, 0x00, 0x01, 0x07, 0,   },
+
+    { 0x07, 0x03, 0x06, 0,    0,    0,   },
+    { 0x04, 0x05, 0x00, 0x06, 0x07, 0x03 },
+    { 0x04, 0x01, 0x03, 0x06, 0,    0,   },
+    { 0x05, 0x00, 0x01, 0x03, 0x06, 0,   },
+
+    { 0x05, 0x07, 0x03, 0x02, 0,    0,   },
+    { 0x07, 0x03, 0x02, 0x00, 0x04, 0,   },
+    { 0x04, 0x01, 0x03, 0x02, 0x05, 0,   },
+    { 0x00, 0x01, 0x03, 0x02, 0,    0,   },
+
+    { 0x04, 0x01, 0x07, 0x05, 0x06, 0x02 },
+    { 0x05, 0x00, 0x04, 0x06, 0x07, 0x03 },
+    { 0,    0,    0,    0,    0,    0,   },
+    { 0,    0,    0,    0,    0,    0,   },
+};
+
+#if PMU_MARCHING_SQUARES_GENERATE_WALLS
+
+// Cell wall edge data
+// Each entry represent vertex indices required to triangulate cell walls
+//
+// (v & 0x00FF) Edge 0
+// (v & 0xFF00) Edge 1
+static const uint WallEdge[CELL_CLASS_COUNT] =
+{
+    0x00000, // 0000
+    0x10045, // 0001 {(5, 4) -> 3}
+    0x10074, // 0010 {(4, 7) -> 2}
+    0x10075, // 0011 {(5, 7) -> 2}
+
+    0x10056, // 0100 {(6, 5) -> 1}
+    0x10046, // 0101 {(6, 4) -> 1}
+    0x25674, // 0110 {(4, 7) -> 2} {(6, 5) -> 1}
+    0x10076, // 0111 {(6, 7) -> 3}
+
+    0x10067, // 1000 {(7, 6) -> 0}
+    0x26745, // 1001 {(5, 4) -> 3} {(7, 6) -> 0}
+    0x10064, // 1010 {(4, 6) -> 0}
+    0x10065, // 1011 {(5, 6) -> 2}
+
+    0x10057, // 1100 {(7, 5) -> 0}
+    0x10047, // 1101 {(7, 4) -> 1}
+    0x10054, // 1110 {(4, 5) -> 0}
+    0x00000, // 1111
+
+    0x27654, // 0110 {(4, 5) -> 0} {(6, 7) -> 3}
+    0x26547, // 1001 {(7, 4) -> 1} {(5, 6) -> 2}
+    0x00000, // 0000
+    0x00000, // 0000
+};
+
+#endif
+
+struct Vertex
+{
+    float3 position;
+    float2 uv;
+    uint tangentX;
+    uint tangentZ;
+    uint color;
+};
+
+Texture2D SurfaceHeightTexture;
+Texture2D ExtrudeHeightTexture;
+Texture2D HeightOffsetTexture;
+
+SamplerState samplerSurfaceHeightTexture;
+SamplerState samplerExtrudeHeightTexture;
+SamplerState samplerHeightOffsetTexture;
+
+uint2 _GDim;
+uint2 _LDim;
+uint2 _GeomCount;
+uint2 _SampleLevel;
+uint _FillCellCount;
+uint _EdgeCellCount;
+uint _BlockOffset;
+uint _FillType;
+float2 _HeightScale;
+float4 _HeightOffset;
+float4 _SampleOffset;
+float4 _Color;
+
+Buffer<uint>               VoxelStateData;
+Buffer<uint>               VoxelFeatureData;
+Buffer<uint>               FillCellIdData;
+Buffer<uint>               EdgeCellIdData;
+Buffer<uint>               CellCaseData;
+
+StructuredBuffer<uint4>    GeomCountData;
+StructuredBuffer<uint4>    OffsetData;
+StructuredBuffer<uint4>    SumData;
+
+RWBuffer<uint>             OutIndexData;
+RWBuffer<uint>             OutCellCaseData;
+RWBuffer<uint>             OutFillCellIdData;
+RWBuffer<uint>             OutEdgeCellIdData;
+
+RWStructuredBuffer<Vertex> OutVertexData;
+RWStructuredBuffer<uint4>  OutGeomCountData;
+
+RWTexture2D<float4> OutDebugTexture;
+
+float3 CreatePos3(float2 xy, float2 dim)
+{
+    return float3(xy-(dim/2), 0);
+}
+
+uint GetIndex(uint2 xy, uint Stride)
+{
+    return xy.x + xy.y * Stride;
+}
+
+float3 GetSurfaceHeightSample(float2 uv, float4 uvo)
+{
+    float hv = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv       , HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hN = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.wy, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hE = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.xw, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hS = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.wy, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hW = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.xw, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float2 hWESN = float2(hE, hN) - float2(hW, hS);
+    return float3(hv, hWESN);
+}
+
+float3 GetSurfaceHeightSample(float2 uv, float4 uvo, float4 offsetsNESW)
+{
+    float hv = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv       , HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hN = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.wy, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hE = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.xw, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hS = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.wy, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float hW = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.xw, HEIGHT_SAMPLE_LEVEL).x * SURFACE_HEIGHT_SCALE;
+    float2 hWESN = (float2(hE, hN) + offsetsNESW.yx) - (float2(hW, hS) + offsetsNESW.wz);
+    return float3(hv, hWESN);
+}
+
+float3 GetExtrudeHeightSample(float2 uv, float4 uvo)
+{
+    float hv = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv       , HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hN = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv+uvo.wy, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hE = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv+uvo.xw, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hS = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv-uvo.wy, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hW = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv-uvo.xw, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float2 hWESN = float2(hE, hN) - float2(hW, hS);
+    return float3(hv, hWESN);
+}
+
+float3 GetExtrudeHeightSample(float2 uv, float4 uvo, float4 offsetsNESW)
+{
+    float hv = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv       , HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hN = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv+uvo.wy, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hE = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv+uvo.xw, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hS = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv-uvo.wy, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float hW = ExtrudeHeightTexture.SampleLevel(samplerExtrudeHeightTexture, uv-uvo.xw, HEIGHT_SAMPLE_LEVEL).x * EXTRUDE_HEIGHT_SCALE;
+    float2 hWESN = (float2(hE, hN) + offsetsNESW.yx) - (float2(hW, hS) + offsetsNESW.wz);
+    return float3(hv, hWESN);
+}
+
+#if 0
+
+float4 GetHeightSampleNESW(float2 uv, float4 uvo, float4 offsetsNESW)
+{
+    float2 hN = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.wy, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float2 hE = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.xw, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float2 hS = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.wy, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float2 hW = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.xw, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float4 hWESN = (float4(hE, hN) + offsetsNESW.yxyx) - (float4(hW, hS) + offsetsNESW.wzwz);
+    return hWESN;
+}
+
+#else
+
+float4 GetHeightSampleNESW(float2 uv, float4 uvo, float2x4 offsetsNESW)
+{
+    float2 hN = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.wy, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float2 hE = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv+uvo.xw, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float2 hS = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.wy, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float2 hW = SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv-uvo.xw, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+    float4 hWESN = (float4(hE, hN) + offsetsNESW._12_22_11_21) - (float4(hW, hS) + offsetsNESW._14_24_13_23);
+    return hWESN;
+}
+
+#endif
+
+float2 GetHeightSampleBase(float2 uv)
+{
+    return SurfaceHeightTexture.SampleLevel(samplerSurfaceHeightTexture, uv, HEIGHT_SAMPLE_LEVEL).xy * _HeightScale;
+}
+
+float2 GetOffsetSampleBase(float2 uv)
+{
+    float4 scale  = { BASE_OFFSET_SCALE, SURFACE_OFFSET_SCALE, EXTRUDE_OFFSET_SCALE, 1 };
+    float4 sample = HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv, OFFSET_SAMPLE_LEVEL);
+    sample.x  = sample.x * 2 - 1;
+    sample   *= scale;
+    return sample.xx + sample.yz;
+}
+
+#if 0
+
+float4 GetOffsetSampleNESW(float2 uv, float4 uvo)
+{
+    float4 sample = {
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv+uvo.wy, OFFSET_SAMPLE_LEVEL).x,
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv+uvo.xw, OFFSET_SAMPLE_LEVEL).x,
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv-uvo.wy, OFFSET_SAMPLE_LEVEL).x,
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv-uvo.xw, OFFSET_SAMPLE_LEVEL).x
+        };
+    return sample * 2 - 1;
+}
+
+#else
+
+float2x4 GetOffsetSampleNESW(float2 uv, float4 uvo)
+{
+    float4x4 sample = {
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv+uvo.wy, OFFSET_SAMPLE_LEVEL),
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv+uvo.xw, OFFSET_SAMPLE_LEVEL),
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv-uvo.wy, OFFSET_SAMPLE_LEVEL),
+        HeightOffsetTexture.SampleLevel(samplerHeightOffsetTexture, uv-uvo.xw, OFFSET_SAMPLE_LEVEL)
+        };
+
+    sample    = transpose(sample);
+    sample[0] = (sample[0] * 2 - 1) * BASE_OFFSET_SCALE;
+
+    return float2x4(
+        sample[0] + sample[1] * SURFACE_OFFSET_SCALE,
+        sample[0] + sample[2] * EXTRUDE_OFFSET_SCALE
+        );
+}
+
+#endif
+
+[numthreads(THREAD_SIZE_X,THREAD_SIZE_Y,1)]
+void CellWriteCaseKernel(uint3 id : SV_DispatchThreadID)
+{
+    // Grid dimension and cell dimension
+    const uint2 BDim = _GDim / _LDim;
+    const uint2 CDim = _LDim-1;
+    const uint2 Bounds = CDim * BDim;
+    const uint2 tid = id.xy;
+
+    // Skip out-of-bounds cells
+    if (any(tid >= _GDim))
+    {
+        return;
+    }
+
+    // Grid id
+    //
+    // Example \w (_LDim = 4)
+    // tid.xy: 0 1 2 3 4 5 6 7 8 9
+    // bid.xy: 0 0 0 0 1 1 1 1 2 2
+    const uint2 bid = (tid / _LDim);
+
+    // Grid local id
+    //
+    // Example \w (_LDim = 4)
+    // tid.xy: 0 1 2 3 4 5 6 7 8 9
+    // bid.xy: 0 1 2 3 0 1 2 3 0 1
+    const uint2 cid = (tid % _LDim);
+
+    // Global id with cell padding
+    //
+    // Example \w (_LDim = 4)
+    // tid.xy: 0 1 2 3 4 5 6 7 8 9
+    // lid.xy: 0 1 2 3 3 4 5 6 6 7
+    const uint2 lid = bid * CDim + cid;
+
+    // Grid local size
+    const uint lnum = _LDim.x * _LDim.y;
+
+    // Global index
+    const uint vidx = tid.x + tid.y * _GDim.x;
+
+    // Global index with cell padding
+    const uint lidx = lid.x + lid.y * _GDim.x;
+
+    // Grid local index
+    //
+    // Example \w (_LDim = 2)
+    // vidx:  0  1  2  3 | bidx:  0  1  4  5
+    //        4  5  6  7 |        2  3  6  7
+    //        8  9 10 11 |        8  9 12 13
+    //       12 13 14 15 |       10 11 14 15
+    const uint bidx = GetIndex(bid, BDim.x) * lnum + GetIndex(cid, _LDim.x);
+
+    // Mask to prevent cell padding from producing any triangles
+    const uint boundsMask = all(cid < CDim);
+
+    const uint voxelState  = VoxelStateData[lidx];
+    const uint centerState = (VoxelStateData[lidx] >> 8) & 0xFF;
+
+    const uint4 states = {
+        voxelState                     & 0xFF,
+        VoxelStateData[lidx+1        ] & 0xFF,
+        VoxelStateData[lidx+_GDim.x  ] & 0xFF,
+        VoxelStateData[lidx+_GDim.x+1] & 0xFF,
+        };
+
+    uint caseCode = 0;
+    bool4 bFilledVoxels = (states == _FillType);
+    bool  bIsSolid = all(bFilledVoxels);
+    caseCode |= bFilledVoxels[0] << 0;
+    caseCode |= bFilledVoxels[1] << 1;
+    caseCode |= bFilledVoxels[2] << 2;
+    caseCode |= bFilledVoxels[3] << 3;
+
+    // Resolve crossing states
+
+    [flatten]
+    if ((caseCode == 0x06) && (centerState == _FillType))
+    {
+        caseCode = 0x10;
+    }
+    else
+    if ((caseCode == 0x09) && (centerState == _FillType))
+    {
+        caseCode = 0x11;
+    }
+
+    uint cellClass = CellClass[caseCode];
+
+    uint vCount = (cellClass >> 4) & 0x0F;
+    uint tCount = (cellClass >> 8) & 0x0F;
+
+#if PMU_MARCHING_SQUARES_GENERATE_WALLS
+
+    bool bHasCornerVertex = ((VertexMap[caseCode] & 0x03) == 0);
+    uint wallCode  = caseCode * all(bFilledVoxels || (states == 0));
+    uint wallClass = WallEdge[wallCode];
+    uint wallCount = (wallClass >> 16) & 0x03;
+    uint wallIndexCount = (wallCount * 3 * 2) * 3;
+    uint wallVertexCount = (vCount - bHasCornerVertex) * 4;
+
+    uint indexCount  = (tCount * 3 * 2) + wallIndexCount;
+    uint vertexCount = vCount * 2 + wallVertexCount;
+
+    caseCode = caseCode | (wallCode << 8);
+
+    vCount = vertexCount;
+    tCount = indexCount * boundsMask;
+
+#else
+
+    tCount = tCount * 3 * boundsMask;
+
+#endif
+
+    OutCellCaseData[bidx] = caseCode;
+
+    OutGeomCountData[bidx] = uint4(
+        vCount,
+        tCount,
+        bIsSolid,
+        !bIsSolid && any(bFilledVoxels)
+        );
+
+    //OutDebugTexture[tid] = PMU_MARCHING_SQUARES_GENERATE_WALLS == 0;
+}
+
+[numthreads(THREAD_SIZE_X,THREAD_SIZE_Y,1)]
+void CellWriteCompactIdKernel(uint3 id : SV_DispatchThreadID)
+{
+    // Grid dimension and cell dimension
+    const uint2 BDim = _GDim / _LDim;
+    const uint2 CDim = _LDim-1;
+    const uint2 Bounds = CDim * BDim;
+    const uint2 tid = id.xy;
+
+    // Skip out-of-bounds cells
+    if (any(tid >= _GDim))
+    {
+        return;
+    }
+
+    const uint  did = tid.x + tid.y * _GDim.x;
+    const uint2 bid = (tid / _LDim);
+    const uint2 cid = (tid % _LDim);
+    const uint2 lid = bid * CDim + cid;
+
+    const uint lnum = _LDim.x * _LDim.y;
+    const uint bidx = GetIndex(bid, BDim.x) * lnum + GetIndex(cid, _LDim.x);
+
+    const uint2 bValidCell = GeomCountData[bidx].zw;
+    const uint2 offsetId   = OffsetData[bidx].zw;
+
+    // Fill cell
+    if (bValidCell.x)
+    {
+        OutFillCellIdData[offsetId.x] = did;
+    }
+
+    // Edge cell
+    if (bValidCell.y)
+    {
+        OutEdgeCellIdData[offsetId.y] = did;
+    }
+}
+
+#if PMU_MARCHING_SQUARES_GENERATE_WALLS
+
+#include "PMUMarchingSquaresGenerateWallCS.ush"
+
+#else
+
+#include "PMUMarchingSquaresGenerateDualCS.ush"
+
+#endif
+
+[numthreads(256,1,1)]
+void TriangulateFillCell(uint3 id : SV_DispatchThreadID)
+{
+    GenerateFillCell(id.x);
+}
+
+[numthreads(256,1,1)]
+void TriangulateEdgeCell(uint3 id : SV_DispatchThreadID)
+{
+    GenerateEdgeCell(id.x);
+}

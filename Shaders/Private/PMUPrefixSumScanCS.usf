@@ -1,0 +1,214 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+
+#if 1
+#define BLOCK_SIZE  128
+#define BLOCK_SIZE2 256
+#else
+#define BLOCK_SIZE  16 //2
+#define BLOCK_SIZE2 32 //4
+#endif
+
+#define GROUPSHARED_SIZE BLOCK_SIZE2
+
+#define GET_GLOBAL_IDX tid.x
+#define GET_LOCAL_IDX  lid.x
+#define GET_GROUP_IDX  gid.x
+#define GROUP_LDS_BARRIER GroupMemoryBarrierWithGroupSync()
+
+#define WG_SIZE  BLOCK_SIZE
+#define WG_SIZE2 BLOCK_SIZE2
+
+#ifndef data_t
+#define data_t uint
+#endif
+
+#ifndef LOCAL_SCAN_USE_SRC
+#define LOCAL_SCAN_USE_SRC 0
+#endif
+
+#ifndef TOP_LEVEL_SCAN_APPEND_SUM_TO_DATA
+#define TOP_LEVEL_SCAN_APPEND_SUM_TO_DATA 0
+#endif
+
+uint _ElementCount;
+uint _BlockCount;
+uint _ScanBlockCount;
+
+StructuredBuffer<data_t> SrcData;
+
+RWStructuredBuffer<data_t> DstData;
+RWStructuredBuffer<data_t> SumData;
+
+groupshared data_t ldsData[GROUPSHARED_SIZE];
+
+data_t ScanExclusiveBlock(uint n, uint lIdx)
+{
+    data_t blocksum = 0;
+
+    uint  offset;
+    uint  nActive;
+    uint2 lid = 2 * lIdx + uint2(1, 2);
+
+    //[unroll]
+    for (nActive=n>>1, offset=1; nActive>0; nActive>>=1, offset<<=1)
+    {
+        GROUP_LDS_BARRIER;
+        if (lIdx < nActive)
+        {
+            uint2 oid = offset*lid-1;
+            ldsData[oid.y] += ldsData[oid.x];
+        }
+    }
+
+    GROUP_LDS_BARRIER;
+
+    if (lIdx == 0)
+    {
+        blocksum = ldsData[n-1];
+        ldsData[n-1] = 0;
+    }
+
+    GROUP_LDS_BARRIER;
+
+    //[unroll]
+    for (nActive=1, offset>>=1; nActive<n; nActive<<=1, offset>>=1)
+    {
+        GROUP_LDS_BARRIER;
+        if (lIdx < nActive)
+        {
+            uint2  oid = offset*lid-1;
+            data_t tmp = ldsData[oid.x];
+            ldsData[oid.x] = ldsData[oid.y];
+            ldsData[oid.y] += tmp;
+        }
+    }
+
+    GROUP_LDS_BARRIER;
+
+    return blocksum;
+}
+
+[numthreads(WG_SIZE,1,1)]
+void LocalScanKernel(
+    uint3 tid : SV_DispatchThreadID,
+    uint3 lid : SV_GroupThreadID,
+    uint3 gid : SV_GroupID
+    )
+{
+    uint gIdx = GET_GLOBAL_IDX;
+    uint lIdx = GET_LOCAL_IDX;
+
+    uint2 bid = (2*lIdx) + uint2(0,1);
+    uint2 did = (2*gIdx) + uint2(0,1);
+
+#if LOCAL_SCAN_USE_SRC
+    ldsData[bid.x] = (did.x < _ElementCount) ? SrcData[did.x] : 0;
+    ldsData[bid.y] = (did.y < _ElementCount) ? SrcData[did.y] : 0;
+#else
+    ldsData[bid.x] = (did.x < _ElementCount) ? DstData[did.x] : 0;
+    ldsData[bid.y] = (did.y < _ElementCount) ? DstData[did.y] : 0;
+#endif
+
+    data_t sum = ScanExclusiveBlock(WG_SIZE2, GET_LOCAL_IDX);
+
+    if (lIdx == 0)
+    {
+        SumData[GET_GROUP_IDX] = sum;
+    }
+
+    if (did.x < _ElementCount)
+    {
+        DstData[did.x] = ldsData[bid.x];
+    }
+
+    if (did.y < _ElementCount)
+    {
+        DstData[did.y] = ldsData[bid.y];
+    }
+}
+
+[numthreads(WG_SIZE,1,1)]
+void TopLevelScanKernel(
+    uint3 tid : SV_DispatchThreadID,
+    uint3 lid : SV_GroupThreadID,
+    uint3 gid : SV_GroupID
+    )
+{
+    uint gIdx = GET_GLOBAL_IDX;
+    uint lIdx = GET_LOCAL_IDX;
+
+    ldsData[2*lIdx  ] = ((2*gIdx  ) < _BlockCount) ? SumData[2*gIdx  ] : 0;
+    ldsData[2*lIdx+1] = ((2*gIdx+1) < _BlockCount) ? SumData[2*gIdx+1] : 0;
+
+    GROUP_LDS_BARRIER;
+
+    data_t sum = ScanExclusiveBlock(_ScanBlockCount, GET_LOCAL_IDX);
+
+    if ((2*gIdx) < _BlockCount)
+    {
+        SumData[2*gIdx  ] = ldsData[2*lIdx  ];
+    }
+
+    if ((2*gIdx+1) < _BlockCount)
+    {
+        SumData[2*gIdx+1] = ldsData[2*lIdx+1];
+    }
+
+    if (gIdx == 0)
+    {
+        SumData[_ScanBlockCount] = sum;
+
+#if TOP_LEVEL_SCAN_APPEND_SUM_TO_DATA
+        DstData[_ElementCount] = sum;
+#endif
+    }
+}
+
+[numthreads(WG_SIZE,1,1)]
+void AddOffsetKernel(
+    uint3 tid : SV_DispatchThreadID,
+    uint3 lid : SV_GroupThreadID,
+    uint3 gid : SV_GroupID
+    )
+{
+    uint tidx = GET_GLOBAL_IDX+WG_SIZE;
+    uint gidx = GET_GROUP_IDX+1;
+
+    data_t sum = SumData[gidx];
+    uint2  bid = (2*tidx) + uint2(0,1);
+
+    if (bid.x < _ElementCount)
+    {
+        DstData[bid.x] += sum;
+    }
+
+    if (bid.y < _ElementCount)
+    {
+        DstData[bid.y] += sum;
+    }
+}

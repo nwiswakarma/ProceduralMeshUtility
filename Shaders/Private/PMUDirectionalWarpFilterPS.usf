@@ -1,0 +1,140 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// MIT License
+// 
+// Copyright (c) 2018-2019 Nuraga Wiswakarma
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+
+#include "/Engine/Private/Common.ush"
+
+Texture2D SourceMap;
+Texture2D WeightMap;
+Texture2D DirectionalMap;
+
+SamplerState SourceMapSampler;
+SamplerState WeightMapSampler;
+SamplerState DirectionalMapSampler;
+
+float  _Direction;
+float2 _Strength;
+uint2  _bSampleMinimum;
+
+#ifndef USE_DIRECTIONAL_MAP
+#define USE_DIRECTIONAL_MAP 0
+#endif
+
+#ifndef USE_BLEND_INCLINE
+#define USE_BLEND_INCLINE 0
+#endif
+
+#ifndef USE_DUAL_SAMPLING
+#define USE_DUAL_SAMPLING 0
+#endif
+
+float GetValue(float2 uv)
+{
+    return Texture2DSample(SourceMap, SourceMapSampler, uv).r;
+}
+
+void MainPS(
+	FScreenVertexOutput Input,
+	out float4 OutColor : SV_Target0
+	)
+{
+    float2 uv = Input.UV;
+    float2 uo;
+    float  us;
+
+    // Find offset unit and offset size
+
+    SourceMap.GetDimensions(uo.x, uo.y);
+    uo = 1.f / uo;
+    us = uo.x + uo.y;
+
+    // Sample height values
+
+    float  rdDir = 0;
+    float2 uoDir0;
+    float2 uoDir1;
+
+#if USE_DIRECTIONAL_MAP
+    float directionSample = Texture2DSample(DirectionalMap, DirectionalMapSampler, uv).r;
+    rdDir = directionSample * PI * 2.f;
+#else
+    rdDir = _Direction * PI * 2.f;
+#endif
+
+    sincos(rdDir   , uoDir0.y, uoDir0.x);
+    sincos(rdDir-PI, uoDir1.y, uoDir1.x);
+
+    uoDir0 *= uo;
+    uoDir1 *= uo;
+
+    float h0 = GetValue(uv);
+    float hv;
+
+    float hD0 = GetValue(uv+uoDir0);
+    hD0 = _bSampleMinimum.x ? min(h0, hD0) : hD0;
+
+#if USE_DUAL_SAMPLING
+    float hD1 = GetValue(uv+uoDir1);
+    hD1 = _bSampleMinimum.y ? min(h0, hD1) : hD1;
+#endif
+
+#if USE_BLEND_INCLINE
+    {
+        float4 hvs = {
+                GetValue(uv+float2( uo.x,     0)), // E
+                GetValue(uv+float2(-uo.x,     0)), // W
+                GetValue(uv+float2(    0,  uo.y)), // N
+                GetValue(uv+float2(    0, -uo.y))  // S
+            };
+
+        float3 normal  = normalize(float3(hvs.xz-hvs.yw, us));
+        float  incline = dot(normal, float3(0,0,1));
+
+        hv  = lerp(h0, hD0, _Strength.x * incline);
+
+#if USE_DUAL_SAMPLING
+        hv += lerp(h0, hD1, _Strength.y * acos(incline));
+        hv /= 2.f;
+#endif
+    }
+#else
+    {
+        hv  = lerp(h0, hD0, _Strength.x);
+
+#if USE_DUAL_SAMPLING
+        hv += lerp(h0, hD1, _Strength.y);
+        hv /= 2.f;
+#endif
+    }
+#endif
+
+    // Weight blend
+
+    float weight = Texture2DSample(WeightMap, WeightMapSampler, uv).r;
+    float result = lerp(hv, h0, saturate(weight));
+
+    OutColor = result;
+}
