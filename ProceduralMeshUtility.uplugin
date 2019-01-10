@@ -7,14 +7,13 @@
 	"Description" : "",
 	"Category" : "Programming",
 	"EnabledByDefault" : "true",
-	"CanContainContent" : "false",
+	"CanContainContent" : "true",
 	"Modules" :
 	[		
 		{
 			"Name" : "ProceduralMeshUtility",
 			"Type" : "Runtime",
-            "LoadingPhase": "PostConfigInit",
-			"WhitelistPlatforms" : [ "Win64", "Win32", "Mac" ]
+            "LoadingPhase": "PostConfigInit"
 		}
 	],
 	"Plugins":
@@ -41,10 +40,6 @@
 		},
 		{
 			"Name" : "UnrealFastNoisePlugin",
-			"Enabled": true
-		},
-		{
-			"Name" : "Substance",
 			"Enabled": true
 		}
 	]

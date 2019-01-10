@@ -26,6 +26,7 @@
 // 
 
 #include "Grid/PMUGridUtility.h"
+#include "RHI/PMURWBuffer.h"
 #include "Shaders/PMUShaderDefinitions.h"
 #include "GWTAsyncTypes.h"
 
@@ -40,14 +41,14 @@ public:
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetDefine(TEXT("PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING"), bReverseWinding);
     }
 
@@ -77,13 +78,12 @@ public:
         "OutIndexData", OutIndexData
         )
 
-    PMU_DECLARE_SHADER_PARAMETERS_3(
+    PMU_DECLARE_SHADER_PARAMETERS_2(
         Value,
         FShaderParameter,
         FParameterId,
-        "_Dimension",       Params_Dimension,
-        "_HeightScale",     Params_HeightScale,
-        "_bReverseWinding", Params_bReverseWinding
+        "_Dimension",   Params_Dimension,
+        "_HeightScale", Params_HeightScale
         )
 };
 
@@ -175,23 +175,17 @@ void UPMUGridUtility::CreateGPUMeshSection_RT(
     const FIntPoint Dimension(Grid.Dimension);
     const int32 DimX(Dimension.X);
     const int32 DimY(Dimension.Y);
+    const int32 VertexCount = DimX * DimY;
 
     // Allocate vertex buffer
 
-    const int32 VertexCount = DimX * DimY;
-    const int32 VertexTypeSize = sizeof(FDynamicMeshVertex);
-    const int32 VertexBufferSize = VertexCount * VertexTypeSize;
-
-    FRHIResourceCreateInfo VertexBufferCreateInfo;
-
-    FStructuredBufferRHIRef VertexBufferRHI = RHICreateStructuredBuffer(
-        VertexTypeSize,
-        VertexBufferSize,
+    FPMURWBufferStructured VertexBuffer;
+    VertexBuffer.Initialize(
+        sizeof(FPMUPackedVertex),
+        VertexCount,
         BUF_Static | BUF_UnorderedAccess,
-        VertexBufferCreateInfo
+        TEXT("GridUtility_GPUMeshSection_VertexBuffer")
         );
-
-    FUnorderedAccessViewRHIRef VertexBufferUAV = RHICreateUnorderedAccessView(VertexBufferRHI, false, false);
 
     // Allocate index buffer
 
@@ -229,20 +223,19 @@ void UPMUGridUtility::CreateGPUMeshSection_RT(
 
         if (bReverseWinding)
         {
-            ComputeShader = *TShaderMapRef<FPMUGridUtilityCreateGPUMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel));
+            ComputeShader = *TShaderMapRef<FPMUGridUtilityCreateGPUMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel));
         }
         else
         {
-            ComputeShader = *TShaderMapRef<FPMUGridUtilityCreateGPUMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel));
+            ComputeShader = *TShaderMapRef<FPMUGridUtilityCreateGPUMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel));
         }
 
         ComputeShader->SetShader(RHICmdList);
         ComputeShader->BindTexture(RHICmdList, TEXT("HeightMap"), TEXT("HeightMapSampler"), HeightTexture, SamplerLinearClamp);
-        ComputeShader->BindUAV(RHICmdList, TEXT("OutVertexData"), VertexBufferUAV);
+        ComputeShader->BindUAV(RHICmdList, TEXT("OutVertexData"), VertexBuffer.UAV);
         ComputeShader->BindUAV(RHICmdList, TEXT("OutIndexData"), IndexBufferUAV);
         ComputeShader->SetParameter(RHICmdList, TEXT("_Dimension"), Dimension);
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"), HeightScale);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_bReverseWinding"), bReverseWinding);
         ComputeShader->DispatchAndClear(RHICmdList, DimX, DimY, 1);
     }
 
@@ -256,11 +249,11 @@ void UPMUGridUtility::CreateGPUMeshSection_RT(
         Vertices.SetNumUninitialized(VertexCount);
 
         void* SectionVertexBufferData = Vertices.GetData();
-        void* VertexBufferData = RHILockStructuredBuffer(VertexBufferRHI, 0, VertexBufferSize, RLM_ReadOnly);
+        void* VertexBufferData = RHILockStructuredBuffer(VertexBuffer.Buffer, 0, VertexBuffer.NumBytes, RLM_ReadOnly);
 
-        FMemory::Memcpy(SectionVertexBufferData, VertexBufferData, VertexBufferSize);
+        FMemory::Memcpy(SectionVertexBufferData, VertexBufferData, VertexBuffer.NumBytes);
 
-        RHIUnlockStructuredBuffer(VertexBufferRHI);
+        RHIUnlockStructuredBuffer(VertexBuffer.Buffer);
     }
 
     // Copy Index Buffer

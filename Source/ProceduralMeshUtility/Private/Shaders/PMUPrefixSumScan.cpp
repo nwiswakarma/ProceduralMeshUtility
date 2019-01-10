@@ -40,14 +40,14 @@ class FPMUPrefixSumLocalScanCS : public FPMUBaseComputeShader<>
 
     DECLARE_SHADER_TYPE(FPMUPrefixSumLocalScanCS, Global);
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FGlobalShader::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
         OutEnvironment.SetDefine(TEXT("data_t"), FPMUPrefixSumScan::GetScanVectorSizeName<ScanVectorSize>());
         OutEnvironment.SetDefine(TEXT("LOCAL_SCAN_USE_SRC"), bUseSrc);
@@ -85,14 +85,14 @@ class FPMUPrefixSumTopLevelScanCS : public FPMUBaseComputeShader<>
 
     DECLARE_SHADER_TYPE(FPMUPrefixSumTopLevelScanCS, Global);
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FGlobalShader::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
         OutEnvironment.SetDefine(TEXT("data_t"), FPMUPrefixSumScan::GetScanVectorSizeName<ScanVectorSize>());
         OutEnvironment.SetDefine(TEXT("TOP_LEVEL_SCAN_APPEND_SUM_TO_DATA"), bAppendSumToData ? 1 : 0);
@@ -127,14 +127,14 @@ class FPMUPrefixSumAddOffsetCS : public FPMUBaseComputeShader<>
 
     DECLARE_SHADER_TYPE(FPMUPrefixSumAddOffsetCS, Global);
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FGlobalShader::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
         OutEnvironment.SetDefine(TEXT("data_t"), FPMUPrefixSumScan::GetScanVectorSizeName<ScanVectorSize>());
     }

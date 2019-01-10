@@ -160,6 +160,9 @@ public:
     bool HasSection(int32 FillType, int32 Index) const;
 
     UFUNCTION(BlueprintCallable)
+    bool HasSectionGeometry(int32 FillType, int32 Index) const;
+
+    UFUNCTION(BlueprintCallable)
     FPMUMeshSectionResourceRef GetSectionResource(int32 FillType, int32 Index);
 
     UFUNCTION(BlueprintCallable)

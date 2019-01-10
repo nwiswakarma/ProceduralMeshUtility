@@ -41,7 +41,7 @@ class FPMUDrawRadialGradientShaderCS : public FPMUBaseComputeShader<16,16,1>
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUDrawRadialGradientShaderCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_0(SRV,,)

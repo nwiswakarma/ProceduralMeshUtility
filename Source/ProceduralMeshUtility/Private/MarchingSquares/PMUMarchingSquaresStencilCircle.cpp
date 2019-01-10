@@ -47,7 +47,7 @@ class FPMUMSqStencilCircleWriteVoxelStateCS : public FPMUBaseComputeShader<16,16
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUMSqStencilCircleWriteVoxelStateCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_0(SRV,,)
@@ -78,7 +78,7 @@ class FPMUMSqStencilCircleWriteVoxelFeatureCS : public FPMUBaseComputeShader<16,
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUMSqStencilCircleWriteVoxelFeatureCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_2(

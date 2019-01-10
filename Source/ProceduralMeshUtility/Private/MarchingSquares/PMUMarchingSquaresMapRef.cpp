@@ -98,7 +98,7 @@ void UPMUMarchingSquaresMapRef::SetHeightTextureFromUTexture2D(UTexture2D* Heigh
 
         if (! TextureResource)
         {
-            UE_LOG(LogTemp,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromUTexture2D() ABORTED - Invalid HeightTexture resource"));
+            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromUTexture2D() ABORTED - Invalid HeightTexture resource"));
             return;
         }
 
@@ -128,7 +128,7 @@ void UPMUMarchingSquaresMapRef::SetHeightTextureFromRTT(UTextureRenderTarget2D* 
 
         if (! TextureResource)
         {
-            UE_LOG(LogTemp,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromRTT() ABORTED - Invalid HeightTexture resource"));
+            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromRTT() ABORTED - Invalid HeightTexture resource"));
             return;
         }
 
@@ -161,7 +161,7 @@ void UPMUMarchingSquaresMapRef::SetHeightTextureFromSubstanceTexture(UObject* He
 
         if (! TextureResource)
         {
-            UE_LOG(LogTemp,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromSubstanceTexture() ABORTED - Invalid SubstanceTexture resource"));
+            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromSubstanceTexture() ABORTED - Invalid SubstanceTexture resource"));
             return;
         }
 
@@ -204,7 +204,7 @@ void UPMUMarchingSquaresMapRef::BuildMap(int32 FillType, bool bGenerateWalls)
     }
     else
     {
-        UE_LOG(LogTemp,Warning, TEXT("UPMUMarchingSquaresMapRef::BuildMap() ABORTED - Invalid map dimension"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::BuildMap() ABORTED - Invalid map dimension"));
     }
 }
 
@@ -218,6 +218,17 @@ void UPMUMarchingSquaresMapRef::ClearMap()
 bool UPMUMarchingSquaresMapRef::HasSection(int32 FillType, int32 Index) const
 {
     return Map.HasSection(FillType, Index);
+}
+
+bool UPMUMarchingSquaresMapRef::HasSectionGeometry(int32 FillType, int32 Index) const
+{
+    if (HasSection(FillType, Index))
+    {
+        const FPMUMeshSectionResource& Resource(Map.GetSectionChecked(FillType, Index));
+        return Resource.GetVertexCount() > 0 && Resource.GetIndexCount() > 0;
+    }
+
+    return false;
 }
 
 FPMUMeshSectionResourceRef UPMUMarchingSquaresMapRef::GetSectionResource(int32 FillType, int32 Index)

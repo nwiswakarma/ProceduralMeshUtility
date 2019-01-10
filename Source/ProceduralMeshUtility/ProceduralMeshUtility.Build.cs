@@ -35,13 +35,12 @@ public class ProceduralMeshUtility: ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        //Definitions.Add("PMU_VOXEL_USE_OCL");
-        //Definitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_HEAP_CONSISTENCY");
-        Definitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_INSTANCE_MEMORY");
-        //Definitions.Add("PMU_SUBSTANCE_ENABLED");
+        //PublicDefinitions.Add("PMU_SUBSTANCE_ENABLED");
+        //PublicDefinitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_HEAP_CONSISTENCY");
+        PublicDefinitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_INSTANCE_MEMORY");
 
         // Get the engine path. Ends with "Engine/"
-        string EnginePath = Path.GetFullPath(BuildConfiguration.RelativeEnginePath);
+        string EnginePath = Path.GetFullPath(Target.RelativeEnginePath);
 
         PrivateIncludePaths.AddRange(
             new string[] {
@@ -64,12 +63,13 @@ public class ProceduralMeshUtility: ModuleRules
 
         PrivateDependencyModuleNames.AddRange(
             new string[] {
+                "Projects",
                 "UtilityShaders",
                 "AGGPlugin",
                 "AJClipperPlugin",
                 "EarcutPlugin",
                 "JCVoronoiPlugin",
-                "UnrealFastNoisePlugin",
+                "UnrealFastNoisePlugin"
                 //"SubstanceCore"
             } );
 

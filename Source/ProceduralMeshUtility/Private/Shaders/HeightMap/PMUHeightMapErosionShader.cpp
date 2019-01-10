@@ -47,7 +47,7 @@ class FPMUHeightMapErosion_ApplyWaterSourcesCS : public FPMUBaseComputeShader<16
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_ApplyWaterSourcesCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_1(
@@ -81,7 +81,7 @@ class FPMUHeightMapErosion_ComputeFluxCS : public FPMUBaseComputeShader<16,16,1>
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_ComputeFluxCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_3(
@@ -117,7 +117,7 @@ class FPMUHeightMapErosion_SimulateFlowCS : public FPMUBaseComputeShader<16,16,1
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_SimulateFlowCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_2(
@@ -155,7 +155,7 @@ class FPMUHeightMapErosion_SimulateErosionCS : public FPMUBaseComputeShader<16,1
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_SimulateErosionCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_3(
@@ -193,7 +193,7 @@ class FPMUHeightMapErosion_TransportSedimentCS : public FPMUBaseComputeShader<16
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_TransportSedimentCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_3(
@@ -230,7 +230,7 @@ class FPMUHeightMapErosion_ComputeThermalWeatheringCS : public FPMUBaseComputeSh
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_ComputeThermalWeatheringCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_2(
@@ -267,7 +267,7 @@ class FPMUHeightMapErosion_TransferThermalWeatheringCS : public FPMUBaseComputeS
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_TransferThermalWeatheringCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_4(
@@ -303,7 +303,7 @@ class FPMUHeightMapErosion_ScanDeltaTGroupCS : public FPMUBaseComputeShader<128,
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_ScanDeltaTGroupCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_1(
@@ -336,7 +336,7 @@ class FPMUHeightMapErosion_ScanDeltaTTopLevelCS : public FPMUBaseComputeShader<1
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUHeightMapErosion_ScanDeltaTTopLevelCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_0(SRV,,)
@@ -687,7 +687,6 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
     RHICmdList.CopyToResolveTarget(
         SrcHeightMap,
         DstHeightMap,
-        true,
         FResolveParams()
         );
 
@@ -879,7 +878,6 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
     RHICmdList.CopyToResolveTarget(
         DstHeightMap,
         SrcHeightMap,
-        false,
         FResolveParams()
         );
 }

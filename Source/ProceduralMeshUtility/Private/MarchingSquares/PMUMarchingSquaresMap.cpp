@@ -50,28 +50,28 @@ DEFINE_LOG_CATEGORY(UntMSq);
 // COMPUTE SHADER DEFINITIONS
 
 template<uint32 bGenerateWalls>
-class FPMUMarchingSquaresMapWriteCellCaseCS : public FPMUBaseComputeShader<16,16,1>
+class TPMUMarchingSquaresMapWriteCellCaseCS : public FPMUBaseComputeShader<16,16,1>
 {
 public:
 
     typedef FPMUBaseComputeShader<16,16,1> FBaseType;
 
-    DECLARE_SHADER_TYPE(FPMUMarchingSquaresMapWriteCellCaseCS, Global);
+    DECLARE_SHADER_TYPE(TPMUMarchingSquaresMapWriteCellCaseCS, Global);
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetDefine(TEXT("PMU_MARCHING_SQUARES_GENERATE_WALLS"), bGenerateWalls);
     }
 
-    PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER(FPMUMarchingSquaresMapWriteCellCaseCS)
+    PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER(TPMUMarchingSquaresMapWriteCellCaseCS)
 
     PMU_DECLARE_SHADER_PARAMETERS_1(
         SRV,
@@ -106,7 +106,7 @@ class FPMUMarchingSquaresMapWriteCellCompactIdCS : public FPMUBaseComputeShader<
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUMarchingSquaresMapWriteCellCompactIdCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_2(
@@ -135,28 +135,28 @@ class FPMUMarchingSquaresMapWriteCellCompactIdCS : public FPMUBaseComputeShader<
 };
 
 template<uint32 bGenerateWalls>
-class FPMUMarchingSquaresMapTriangulateFillCellCS : public FPMUBaseComputeShader<256,1,1>
+class TPMUMarchingSquaresMapTriangulateFillCellCS : public FPMUBaseComputeShader<256,1,1>
 {
 public:
 
     typedef FPMUBaseComputeShader<256,1,1> FBaseType;
 
-    DECLARE_SHADER_TYPE(FPMUMarchingSquaresMapTriangulateFillCellCS, Global);
+    DECLARE_SHADER_TYPE(TPMUMarchingSquaresMapTriangulateFillCellCS, Global);
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetDefine(TEXT("PMU_MARCHING_SQUARES_GENERATE_WALLS"), bGenerateWalls);
     }
 
-    PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(FPMUMarchingSquaresMapTriangulateFillCellCS)
+    PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMarchingSquaresMapTriangulateFillCellCS)
 
     PMU_DECLARE_SHADER_PARAMETERS_3(
         Texture,
@@ -211,28 +211,28 @@ public:
 };
 
 template<uint32 bGenerateWalls>
-class FPMUMarchingSquaresMapTriangulateEdgeCellCS : public FPMUBaseComputeShader<256,1,1>
+class TPMUMarchingSquaresMapTriangulateEdgeCellCS : public FPMUBaseComputeShader<256,1,1>
 {
 public:
 
     typedef FPMUBaseComputeShader<256,1,1> FBaseType;
 
-    DECLARE_SHADER_TYPE(FPMUMarchingSquaresMapTriangulateEdgeCellCS, Global);
+    DECLARE_SHADER_TYPE(TPMUMarchingSquaresMapTriangulateEdgeCellCS, Global);
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetDefine(TEXT("PMU_MARCHING_SQUARES_GENERATE_WALLS"), bGenerateWalls);
     }
 
-    PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(FPMUMarchingSquaresMapTriangulateEdgeCellCS)
+    PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMarchingSquaresMapTriangulateEdgeCellCS)
 
     PMU_DECLARE_SHADER_PARAMETERS_3(
         Texture,
@@ -288,17 +288,16 @@ public:
         )
 };
 
-
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMarchingSquaresMapWriteCellCaseCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("CellWriteCaseKernel"), SF_Compute);
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMarchingSquaresMapWriteCellCaseCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("CellWriteCaseKernel"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMarchingSquaresMapWriteCellCaseCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("CellWriteCaseKernel"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMarchingSquaresMapWriteCellCaseCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("CellWriteCaseKernel"), SF_Compute);
 
 IMPLEMENT_SHADER_TYPE(, FPMUMarchingSquaresMapWriteCellCompactIdCS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("CellWriteCompactIdKernel"), SF_Compute);
 
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMarchingSquaresMapTriangulateFillCellCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateFillCell"), SF_Compute);
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMarchingSquaresMapTriangulateFillCellCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateFillCell"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMarchingSquaresMapTriangulateFillCellCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateFillCell"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMarchingSquaresMapTriangulateFillCellCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateFillCell"), SF_Compute);
 
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMarchingSquaresMapTriangulateEdgeCellCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateEdgeCell"), SF_Compute);
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMarchingSquaresMapTriangulateEdgeCellCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateEdgeCell"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMarchingSquaresMapTriangulateEdgeCellCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateEdgeCell"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMarchingSquaresMapTriangulateEdgeCellCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMarchingSquaresCS.usf"), TEXT("TriangulateEdgeCell"), SF_Compute);
 
 void FPMUMarchingSquaresMap::SetDimension(FIntPoint InDimension)
 {
@@ -483,7 +482,6 @@ void FPMUMarchingSquaresMap::BuildMap_RT(FRHICommandListImmediate& RHICmdList, u
         RHICmdList.CopyToResolveTarget(
             DebugTextureRHI,
             DebugRTTRHI,
-            false,
             FResolveParams()
             );
 
@@ -546,15 +544,15 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
     // Write cell case data
 
     {
-        FPMUMarchingSquaresMapWriteCellCaseCS<0>::FBaseType* ComputeShader;
+        TPMUMarchingSquaresMapWriteCellCaseCS<0>::FBaseType* ComputeShader;
 
         if (bUseDualMesh)
         {
-            ComputeShader = *TShaderMapRef<FPMUMarchingSquaresMapWriteCellCaseCS<0>>(RHIShaderMap);
+            ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapWriteCellCaseCS<0>>(RHIShaderMap);
         }
         else
         {
-            ComputeShader = *TShaderMapRef<FPMUMarchingSquaresMapWriteCellCaseCS<1>>(RHIShaderMap);
+            ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapWriteCellCaseCS<1>>(RHIShaderMap);
         }
 
         ComputeShader->SetShader(RHICmdList);
@@ -675,7 +673,7 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
     FPMURWBuffer           IData;
 
     VData.Initialize(
-        sizeof(FDynamicMeshVertex),
+        sizeof(FPMUPackedVertex),
         TotalVCount,
         BUF_Static,
         TEXT("Vertex Data")
@@ -691,15 +689,15 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
 
     if (FillCellCount > 0)
     {
-        FPMUMarchingSquaresMapTriangulateFillCellCS<0>::FBaseType* ComputeShader;
+        TPMUMarchingSquaresMapTriangulateFillCellCS<0>::FBaseType* ComputeShader;
 
         if (bUseDualMesh)
         {
-            ComputeShader = *TShaderMapRef<FPMUMarchingSquaresMapTriangulateFillCellCS<0>>(RHIShaderMap);
+            ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapTriangulateFillCellCS<0>>(RHIShaderMap);
         }
         else
         {
-            ComputeShader = *TShaderMapRef<FPMUMarchingSquaresMapTriangulateFillCellCS<1>>(RHIShaderMap);
+            ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapTriangulateFillCellCS<1>>(RHIShaderMap);
         }
 
         FSamplerStateRHIParamRef HeightTextureSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
@@ -753,15 +751,15 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
 
     if (EdgeCellCount > 0)
     {
-        FPMUMarchingSquaresMapTriangulateEdgeCellCS<0>::FBaseType* ComputeShader;
+        TPMUMarchingSquaresMapTriangulateEdgeCellCS<0>::FBaseType* ComputeShader;
 
         if (bUseDualMesh)
         {
-            ComputeShader = *TShaderMapRef<FPMUMarchingSquaresMapTriangulateEdgeCellCS<0>>(RHIShaderMap);
+            ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapTriangulateEdgeCellCS<0>>(RHIShaderMap);
         }
         else
         {
-            ComputeShader = *TShaderMapRef<FPMUMarchingSquaresMapTriangulateEdgeCellCS<1>>(RHIShaderMap);
+            ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapTriangulateEdgeCellCS<1>>(RHIShaderMap);
         }
 
         FSamplerStateRHIParamRef HeightTextureSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
@@ -857,11 +855,11 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
         uint32 GVCount = Sum1[0] - GVOffset;
         uint32 GICount = Sum1[1] - GIOffset;
 
-        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() Grid Geometry Count (%d, %d)"), i0, i1);
-        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() GVOffset: %u"), GVOffset);
-        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() GIOffset: %u"), GIOffset);
-        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() GVCount: %u"), GVCount);
-        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() GICount: %u"), GICount);
+        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() [%d] Grid Geometry Count (%d, %d)"), i, i0, i1);
+        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() [%d] GVOffset: %u"), i, GVOffset);
+        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() [%d] GIOffset: %u"), i, GIOffset);
+        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() [%d] GVCount: %u"), i, GVCount);
+        UE_LOG(UntMSq,Warning, TEXT("FPMUMarchingSquaresMap::GenerateMarchingCubes_RT() [%d] GICount: %u"), i, GICount);
 
         bool bValidSection = (GVCount >= 3 && GICount >= 3);
 

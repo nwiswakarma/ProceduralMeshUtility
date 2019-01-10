@@ -35,6 +35,7 @@
 #include "UniformBuffer.h"
 
 #include "ProceduralMeshUtility.h"
+#include "RHI/PMURHIUtilityLibrary.h"
 #include "RHI/PMURWBuffer.h"
 #include "Shaders/PMUShaderDefinitions.h"
 
@@ -46,22 +47,22 @@ class FPMUMSqStencilPolyDrawMaskVD : public FRenderResource
 {
 public:
 
-	FVertexDeclarationRHIRef VertexDeclarationRHI;
+    FVertexDeclarationRHIRef VertexDeclarationRHI;
 
-	virtual void InitRHI() override
-	{
-		FVertexDeclarationElementList Elements;
-		Elements.Add(FVertexElement(0, 0, VET_Float2, 0, sizeof(FVector2D)));
-		VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
-	}
+    virtual void InitRHI() override
+    {
+        FVertexDeclarationElementList Elements;
+        Elements.Add(FVertexElement(0, 0, VET_Float2, 0, sizeof(FVector2D)));
+        VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
+    }
 
-	virtual void ReleaseRHI() override
-	{
-		VertexDeclarationRHI.SafeRelease();
-	}
+    virtual void ReleaseRHI() override
+    {
+        VertexDeclarationRHI.SafeRelease();
+    }
 };
 
-TGlobalResource<FPMUMSqStencilPolyDrawMaskVD> GPMUMSqStencilPolyDrawMaskVD;
+static TGlobalResource<FPMUMSqStencilPolyDrawMaskVD> GPMUMSqStencilPolyDrawMaskVD;
 
 // VERTEX SHADER DEFINITIONS
 
@@ -73,14 +74,14 @@ class FPMUMSqStencilPolyDrawMaskVS : public FPMUBaseVertexShader
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return true;
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetRenderTargetOutputFormat(0, PF_R16_UINT);
     }
 
@@ -105,14 +106,14 @@ class FPMUMSqStencilPolyDrawEdgeVS : public FPMUBaseVertexShader
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return true;
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetRenderTargetOutputFormat(0, PF_R16_UINT);
     }
 
@@ -143,14 +144,14 @@ class FPMUMSqStencilPolyDrawMaskPS : public FPMUBasePixelShader
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return true;
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetRenderTargetOutputFormat(0, PF_R16_UINT);
     }
 
@@ -169,14 +170,14 @@ class FPMUMSqStencilPolyDrawEdgePS : public FPMUBasePixelShader
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetRenderTargetOutputFormat(0, PF_R16_UINT);
     }
 
@@ -200,7 +201,7 @@ class FPMUMSqStencilPolyWriteVoxelStateCS : public FPMUBaseComputeShader<16,16,1
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUMSqStencilPolyWriteVoxelStateCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_2(
@@ -235,7 +236,7 @@ class FPMUMSqStencilPolyWriteVoxelFeatureCS : public FPMUBaseComputeShader<16,16
     PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
         FPMUMSqStencilPolyWriteVoxelFeatureCS,
         Global,
-        RHISupportsComputeShaders(Platform)
+        RHISupportsComputeShaders(Parameters.Platform)
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_2(
@@ -326,7 +327,7 @@ void FPMUMarchingSquaresStencilPoly::DrawStencilMask_RT()
     FVector2D DrawExts = FVector2D(Dimension.X, Dimension.Y) / 2.f;
     VSShader->SetParameter(RHICmdList, TEXT("_DrawExts"), DrawExts);
 
-    DrawIndexedPrimitiveUP(
+    FPMURHIUtilityLibrary::DrawIndexedPrimitiveVolatile(
         RHICmdList,
         PT_TriangleList,
         0,
@@ -532,7 +533,7 @@ void FPMUMarchingSquaresStencilPoly::DrawStencilEdge_RT()
     FVector2D DrawExts = FVector2D(Dimension.X, Dimension.Y) / 2.f;
     VSShader->SetParameter(RHICmdList, TEXT("_DrawExts"), DrawExts);
 
-    DrawIndexedPrimitiveUP(
+    FPMURHIUtilityLibrary::DrawIndexedPrimitiveVolatile(
         RHICmdList,
         PT_TriangleList,
         0,
@@ -563,7 +564,6 @@ void FPMUMarchingSquaresStencilPoly::ResolveStencilTexture_RT()
     RHICmdList.CopyToResolveTarget(
         StencilTextureRTV,
         StencilTextureRSV,
-        true,
         FResolveParams()
         );
 
@@ -615,19 +615,18 @@ void FPMUMarchingSquaresStencilPoly::GenerateVoxelFeatures_RT(FRHICommandListImm
         check(! IsValidRef(StencilTextureSRV));
 
         FRHIResourceCreateInfo CreateInfo;
-		RHICreateTargetableShaderResource2D(
-			Dimension.X,
-			Dimension.Y,
-			//PF_R32_FLOAT,
-			PF_R16_UINT,
-			1,
-			TexCreate_None,
-			TexCreate_RenderTargetable,
-			false,
-			CreateInfo,
-			StencilTextureRTV,
+        RHICreateTargetableShaderResource2D(
+            Dimension.X,
+            Dimension.Y,
+            PF_R16_UINT,
+            1,
+            TexCreate_None,
+            TexCreate_RenderTargetable,
+            false,
+            CreateInfo,
+            StencilTextureRTV,
             StencilTextureRSV
-			);
+            );
 
         // Create shader resourve view
         StencilTextureSRV = RHICreateShaderResourceView(StencilTextureRSV, 0);
@@ -648,8 +647,6 @@ void FPMUMarchingSquaresStencilPoly::GenerateVoxelFeatures_RT(FRHICommandListImm
 
     SetRenderTarget(RHICmdList, FTextureRHIParamRef(), FTextureRHIParamRef());
 
-    //RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, StencilTextureRTV);
-
     // Draw stencil texture
 
     DrawStencilMask_RT();
@@ -658,8 +655,6 @@ void FPMUMarchingSquaresStencilPoly::GenerateVoxelFeatures_RT(FRHICommandListImm
     // Resolve stencil texture
 
     ResolveStencilTexture_RT();
-
-    //RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, StencilTextureRTV);
 
     // Get data SRV & UAV
 

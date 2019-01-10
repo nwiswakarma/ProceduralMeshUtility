@@ -42,9 +42,10 @@ static int32 GetNewIndexForOldVertIndex(
     TSet<int32>& BorderVertSet,
     const FVector& Offset,
     const bool bCalculateBounds,
-    const FPositionVertexBuffer* PosBuffer,
-    const FStaticMeshVertexBuffer* VertBuffer,
-    const FColorVertexBuffer* ColorBuffer,
+    //const FPositionVertexBuffer* PosBuffer,
+    //const FStaticMeshVertexBuffer* VertBuffer,
+    //const FColorVertexBuffer* ColorBuffer,
+    const FStaticMeshVertexBuffers& VertexBuffers,
     FPMUMeshSection& Section
     )
 {
@@ -59,23 +60,23 @@ static int32 GetNewIndexForOldVertIndex(
 
         TArray<FPMUMeshVertex>& Vertices(Section.VertexBuffer);
 		int32 SectionVertIndex = Vertices.Emplace(
-            Offset + PosBuffer->VertexPosition(MeshVertIndex),
-            VertBuffer->VertexTangentZ(MeshVertIndex)
+            Offset + VertexBuffers.PositionVertexBuffer.VertexPosition(MeshVertIndex),
+            VertexBuffers.StaticMeshVertexBuffer.VertexTangentZ(MeshVertIndex)
             );
 
 		MeshToSectionVertMap.Add(MeshVertIndex, SectionVertIndex);
 
         // Find border vertices
-        if (ColorBuffer && (uint32)MeshVertIndex < ColorBuffer->GetNumVertices())
-        {
-            // Find border vertices based on color mask threshold
-            const FColor& Color(ColorBuffer->VertexColor(MeshVertIndex));
+        //if (ColorBuffer && (uint32)MeshVertIndex < ColorBuffer->GetNumVertices())
+        //{
+        //    // Find border vertices based on color mask threshold
+        //    const FColor& Color(ColorBuffer->VertexColor(MeshVertIndex));
 
-            if (Color.R >= 127)
-            {
-                BorderVertSet.Emplace(SectionVertIndex);
-            }
-        }
+        //    if (Color.R >= 127)
+        //    {
+        //        BorderVertSet.Emplace(SectionVertIndex);
+        //    }
+        //}
 
         // Calculate section bounds if required
         if (bCalculateBounds)
@@ -559,9 +560,7 @@ bool FPMUVoxelMap::ApplyPrefab(
             BorderVertSet,
             Center,
             ! bApplyHeightMap,
-            &LOD.PositionVertexBuffer,
-            &LOD.VertexBuffer,
-            &LOD.ColorVertexBuffer,
+            LOD.VertexBuffers,
             OutSection
             );
 

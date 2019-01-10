@@ -147,9 +147,9 @@ public:
 
     typedef ShaderMetaType FPMUShaderMetaType;
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FGlobalShader::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.CompilerFlags.Add(CFLAG_StandardOptimization);
     }
 
@@ -782,9 +782,9 @@ class FPMUBaseVertexShader : public FPMUBaseGlobalShader<SF_Vertex>
 {
 public:
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FPMUBaseGlobalShader::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FPMUBaseGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
     }
 
     FPMUBaseVertexShader() = default;
@@ -799,9 +799,9 @@ class FPMUBasePixelShader : public FPMUBaseGlobalShader<SF_Pixel>
 {
 public:
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FPMUBaseGlobalShader::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FPMUBaseGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
     }
 
     FPMUBasePixelShader() = default;
@@ -817,10 +817,10 @@ class FPMUBaseComputeShader : public FPMUBaseGlobalShader<SF_Compute>
 {
 public:
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FPMUBaseGlobalShader::ModifyCompilationEnvironment(Platform, OutEnvironment);
-        SetThreadCountDefines(Platform, OutEnvironment);
+        FPMUBaseGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+        SetThreadCountDefines(Parameters.Platform, OutEnvironment);
     }
 
     static void SetThreadCountDefines(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
@@ -906,13 +906,13 @@ public:
     PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(ClassName)
 
 #define PMU_DECLARE_SHADER_DEFAULT_STATICS(ClassName, CacheCheck)\
-    static bool ShouldCache(EShaderPlatform Platform)\
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)\
     {\
         return CacheCheck;\
     }\
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)\
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)\
     {\
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);\
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);\
     }
 
 #define PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER(ClassName)\

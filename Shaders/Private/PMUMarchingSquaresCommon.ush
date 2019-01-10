@@ -86,7 +86,9 @@ uint PackNormalizedFloat2(float2 v)
 
 uint PackNormalizedFloat4(float4 v)
 {
-	uint4 n = uint4((v+1.0f) * 127.4999f) & 0xFF;
+	int4 n;
+    n = v * 127.4999f;
+    n = n & 0xFF;
 	return n.x | (n.y << 8) | (n.z << 16) | (n.w << 24);
 }
 

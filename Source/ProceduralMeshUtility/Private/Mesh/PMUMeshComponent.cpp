@@ -55,174 +55,159 @@
 //DECLARE_CYCLE_STAT(TEXT("PMUMesh ~ Get Mesh Elements"), STAT_VoxelMesh_GetMeshElements, STATGROUP_Voxel);
 //DECLARE_CYCLE_STAT(TEXT("PMUMesh ~ Update Collision"), STAT_VoxelMesh_UpdateCollision, STATGROUP_Voxel);
 
-struct FPMUMeshBufferVertex
-{
-    FVector4 Position;
-    FVector2D TextureCoordinate;
-    FPackedNormal TangentX;
-    FPackedNormal TangentZ;
-    FColor Color;
-};
-
-class FPMUMeshVertexResourceArray : public TResourceArray<FPMUMeshBufferVertex, VERTEXBUFFER_ALIGNMENT>
-{
-public:
-
-    virtual void Discard() override
-    {
-        // TResourceArray<>::Discard() only discard array content if not in editor or commandlet,
-        // override to always discard if cpu access is not required
-        if (! GetAllowCPUAccess())
-        {
-            Empty();
-        }
-    }
-};
-
-class FPMUMeshVertexBuffer : public FVertexBuffer
-{
-public:
-
-    FPMUMeshVertexResourceArray Vertices;
-    int32 VertexCount = -1;
-
-    virtual void InitRHI() override
-    {
-        VertexCount = Vertices.Num();
-
-        FRHIResourceCreateInfo CreateInfo(&Vertices);
-        VertexBufferRHI = RHICreateVertexBuffer(Vertices.GetResourceDataSize(), BUF_Static, CreateInfo);
-    }
-
-    FORCEINLINE bool GetAllowCPUAccess(bool bEnabled) const
-    {
-        return Vertices.GetAllowCPUAccess();
-    }
-
-    FORCEINLINE void SetAllowCPUAccess(bool bEnabled)
-    {
-        Vertices.SetAllowCPUAccess(bEnabled);
-    }
-
-    FORCEINLINE int32 GetVertexCount() const
-    {
-        // Return assigned vertex count if vertex resource cpu access is not required
-        // and vertex buffer RHI is valid since vertex resource content might have already been discarded
-        return (!Vertices.GetAllowCPUAccess() && VertexBufferRHI.IsValid()) ? VertexCount : Vertices.Num();
-    }
-};
-
-class FPMUMeshIndexBuffer : public FIndexBuffer
-{
-public:
-
-    TArray<int32> Indices;
-
-    virtual void InitRHI() override
-    {
-        FRHIResourceCreateInfo CreateInfo;
-
-        // Create and write index buffer
-        void* Buffer = nullptr;
-        IndexBufferRHI = RHICreateAndLockIndexBuffer(sizeof(int32), Indices.Num() * sizeof(int32), BUF_Static, CreateInfo, Buffer);
-        FMemory::Memcpy(Buffer, Indices.GetData(), Indices.Num() * sizeof(int32));
-        RHIUnlockIndexBuffer(IndexBufferRHI);
-    }
-};
-
 class FPMUMeshVertexFactory : public FLocalVertexFactory
 {
+	DECLARE_VERTEX_FACTORY_TYPE(FPMUMeshVertexFactory);
+
 public:
 
-    void Init(const FPMUMeshVertexBuffer* VertexBuffer)
-    {
-        if (IsInRenderingThread())
-        {
-            check(IsInRenderingThread());
-            check(VertexBuffer != nullptr);
+    FPMUMeshVertexFactory(ERHIFeatureLevel::Type InFeatureLevel)
+        : FLocalVertexFactory(InFeatureLevel, "FPMUMeshVertexFactory")
+	{
+		bSupportsManualVertexFetch = false;
+	}
 
-            FDataType NewData;
-            NewData.PositionComponent = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FPMUMeshBufferVertex, Position, VET_Float4);
-            NewData.TextureCoordinates.Emplace(
-                FVertexStreamComponent(VertexBuffer, STRUCT_OFFSET(FPMUMeshBufferVertex, TextureCoordinate), sizeof(FPMUMeshBufferVertex), VET_Float2)
-                );
-            NewData.TangentBasisComponents[0] = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FPMUMeshBufferVertex, TangentX, VET_PackedNormal);
-            NewData.TangentBasisComponents[1] = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FPMUMeshBufferVertex, TangentZ, VET_PackedNormal);
-            NewData.ColorComponent = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FPMUMeshBufferVertex, Color, VET_Color);
-            SetData(NewData);
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType)
+	{
+		return FLocalVertexFactory::ShouldCompilePermutation(Platform, Material, ShaderType);
+	}
+
+	static void ModifyCompilationEnvironment(EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		const bool ContainsManualVertexFetch = OutEnvironment.GetDefinitions().Contains("MANUAL_VERTEX_FETCH");
+		if (! ContainsManualVertexFetch)
+		{
+			OutEnvironment.SetDefine(TEXT("MANUAL_VERTEX_FETCH"), TEXT("0"));
+		}
+
+		// Override local vertex factory compilation environment to disable speed tree wind and manual vertex fetch
+        //
+		//FLocalVertexFactory::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
+	}
+
+	virtual void InitRHI() override
+    {
+        // If the vertex buffer containing position is not the same vertex buffer containing the rest of the data,
+        // then initialize PositionStream and PositionDeclaration.
+        if (Data.PositionComponent.VertexBuffer != Data.TangentBasisComponents[0].VertexBuffer)
+        {
+            FVertexDeclarationElementList PositionOnlyStreamElements;
+            PositionOnlyStreamElements.Add(AccessPositionStreamComponent(Data.PositionComponent, 0));
+            InitPositionDeclaration(PositionOnlyStreamElements);
+        }
+
+        FVertexDeclarationElementList Elements;
+
+        if (Data.PositionComponent.VertexBuffer != NULL)
+        {
+            Elements.Add(AccessStreamComponent(Data.PositionComponent, 0));
+        }
+
+        // Only tangent and normal are used by the stream. Binormal is derived in the shader.
+        uint8 TangentBasisAttributes[2] = { 1, 2 };
+        for (int32 AxisIndex=0; AxisIndex<2; ++AxisIndex)
+        {
+            if (Data.TangentBasisComponents[AxisIndex].VertexBuffer != NULL)
+            {
+                Elements.Add(AccessStreamComponent(Data.TangentBasisComponents[AxisIndex], TangentBasisAttributes[AxisIndex]));
+            }
+        }
+
+        ColorStreamIndex = -1;
+        if (Data.ColorComponent.VertexBuffer)
+        {
+            Elements.Add(AccessStreamComponent(Data.ColorComponent, 3));
+            ColorStreamIndex = Elements.Last().StreamIndex;
         }
         else
         {
-            ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
-                InitPMUMeshVertexFactory,
-                FPMUMeshVertexFactory*, VertexFactory, this,
-                const FPMUMeshVertexBuffer*, VertexBuffer, VertexBuffer,
-                {
-                    VertexFactory->Init(VertexBuffer);
-                } );
+            //If the mesh has no color component, set the null color buffer on a new stream with a stride of 0.
+            //This wastes 4 bytes of bandwidth per vertex, but prevents having to compile out twice the number of vertex factories.
+            FVertexStreamComponent NullColorComponent(&GNullColorVertexBuffer, 0, 0, VET_Color);
+            Elements.Add(AccessStreamComponent(NullColorComponent, 3));
+            ColorStreamIndex = Elements.Last().StreamIndex;
         }
+
+        if (Data.TextureCoordinates.Num())
+        {
+            const int32 BaseTexCoordAttribute = 4;
+
+            for (int32 CoordinateIndex=0; CoordinateIndex < Data.TextureCoordinates.Num(); ++CoordinateIndex)
+            {
+                Elements.Add(AccessStreamComponent(
+                    Data.TextureCoordinates[CoordinateIndex],
+                    BaseTexCoordAttribute + CoordinateIndex
+                    ));
+            }
+
+            for (int32 CoordinateIndex=Data.TextureCoordinates.Num(); CoordinateIndex < MAX_STATIC_TEXCOORDS/2; ++CoordinateIndex)
+            {
+                Elements.Add(AccessStreamComponent(
+                    Data.TextureCoordinates[Data.TextureCoordinates.Num()-1],
+                    BaseTexCoordAttribute + CoordinateIndex
+                    ));
+            }
+        }
+
+        if (Data.LightMapCoordinateComponent.VertexBuffer)
+        {
+            Elements.Add(AccessStreamComponent(Data.LightMapCoordinateComponent, 15));
+        }
+        else
+        if (Data.TextureCoordinates.Num())
+        {
+            Elements.Add(AccessStreamComponent(Data.TextureCoordinates[0], 15));
+        }
+
+        check(Streams.Num() > 0);
+
+        InitDeclaration(Elements);
+
+        check(IsValidRef(GetDeclaration()));
+
+		// Manual vertex fetch is disabled, local vertex factory uniform buffer
+        // does not need to be created
+        //
+        //if (RHISupportsManualVertexFetch(GMaxRHIShaderPlatform))
+        //{
+        //    UniformBuffer = CreateLocalVFUniformBuffer(this, nullptr);
+        //}
     }
 
-    void InitDirect(const FVertexBuffer* VertexBuffer)
+    void Init(const FVertexBuffer* VertexBuffer)
     {
-        if (IsInRenderingThread())
-        {
-            check(IsInRenderingThread());
-            check(VertexBuffer != nullptr);
+        ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
+            InitPMUMeshVertexFactory,
+            FPMUMeshVertexFactory*, VertexFactory, this,
+            const FVertexBuffer*, VertexBuffer, VertexBuffer,
+            {
+                check(VertexBuffer != nullptr);
 
-            FDataType NewData;
-            NewData.PositionComponent = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FDynamicMeshVertex, Position, VET_Float3);
-            NewData.TextureCoordinates.Emplace(
-                STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FDynamicMeshVertex, TextureCoordinate, VET_Float2)
-                );
-            NewData.TangentBasisComponents[0] = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FDynamicMeshVertex, TangentX, VET_PackedNormal);
-            NewData.TangentBasisComponents[1] = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FDynamicMeshVertex, TangentZ, VET_PackedNormal);
-            NewData.ColorComponent = STRUCTMEMBER_VERTEXSTREAMCOMPONENT(VertexBuffer, FDynamicMeshVertex, Color, VET_Color);
-            SetData(NewData);
-        }
-        else
-        {
-            ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
-                InitPMUMeshVertexFactory,
-                FPMUMeshVertexFactory*, VertexFactory, this,
-                const FVertexBuffer*, VertexBuffer, VertexBuffer,
-                {
-                    VertexFactory->InitDirect(VertexBuffer);
-                } );
-        }
+                const int32 VertexStride = sizeof(FPMUPackedVertex);
+
+                FLocalVertexFactory::FDataType VertexData;
+
+                VertexData.NumTexCoords = 1;
+                VertexData.LightMapCoordinateIndex = 0;
+
+                VertexData.PositionComponent = FVertexStreamComponent(VertexBuffer, STRUCT_OFFSET(FPMUPackedVertex, Position), VertexStride, VET_Float3);
+                VertexData.TextureCoordinates.Emplace(
+                    VertexBuffer, STRUCT_OFFSET(FPMUPackedVertex, TextureCoordinate), VertexStride, VET_Float2
+                    );
+                VertexData.TangentBasisComponents[0] = FVertexStreamComponent(VertexBuffer, STRUCT_OFFSET(FPMUPackedVertex, TangentX), VertexStride, VET_PackedNormal);
+                VertexData.TangentBasisComponents[1] = FVertexStreamComponent(VertexBuffer, STRUCT_OFFSET(FPMUPackedVertex, TangentZ), VertexStride, VET_PackedNormal);
+                VertexData.ColorComponent = FVertexStreamComponent(VertexBuffer, STRUCT_OFFSET(FPMUPackedVertex, Color), VertexStride, VET_Color);
+
+                VertexFactory->SetData(VertexData);
+            } );
     }
 };
+
+IMPLEMENT_VERTEX_FACTORY_TYPE(FPMUMeshVertexFactory, "/Engine/Private/LocalVertexFactory.ush", true, true, true, true, true);
 
 struct FPMUMeshProxySection
 {
-    UMaterialInterface*   Material;
-    FPMUMeshVertexBuffer  VertexBuffer;
-    FPMUMeshIndexBuffer   IndexBuffer;
-    FPMUMeshVertexFactory VertexFactory;
-    bool bSectionVisible;
-
-    FPMUMeshProxySection()
-        : Material(NULL)
-        , bSectionVisible(true)
-    {
-    }
-
-    void ReleaseResources()
-    {
-        VertexBuffer.ReleaseResource();
-        IndexBuffer.ReleaseResource();
-        VertexFactory.ReleaseResource();
-    }
-
-    FORCEINLINE int32 GetVertexCount() const
-    {
-        return VertexBuffer.GetVertexCount();
-    }
-};
-
-struct FPMUMeshProxySection_Direct
-{
-    UMaterialInterface*   Material;
+    UMaterialInterface* Material;
     FPMUMeshVertexFactory VertexFactory;
 	FPMUMeshSectionResourceBuffer Buffer;
 
@@ -230,8 +215,16 @@ struct FPMUMeshProxySection_Direct
     int32 IndexCount;
     bool bSectionVisible;
 
-    FPMUMeshProxySection_Direct(const FPMUMeshSectionResource& InSection)
+    FPMUMeshProxySection(ERHIFeatureLevel::Type InFeatureLevel)
         : Material(NULL)
+        , VertexFactory(InFeatureLevel)
+        , bSectionVisible(true)
+    {
+    }
+
+    FPMUMeshProxySection(ERHIFeatureLevel::Type InFeatureLevel, const FPMUMeshSectionResource& InSection)
+        : Material(NULL)
+        , VertexFactory(InFeatureLevel)
         , bSectionVisible(InSection.bSectionVisible)
     {
         Buffer.VertexBuffer = InSection.Buffer.VertexBuffer;
@@ -243,7 +236,7 @@ struct FPMUMeshProxySection_Direct
 
     void InitResources()
     {
-        VertexFactory.InitDirect(&Buffer.VertexBuffer);
+        VertexFactory.Init(&Buffer.VertexBuffer);
         BeginInitResource(&Buffer.VertexBuffer);
         BeginInitResource(&Buffer.IndexBuffer);
         BeginInitResource(&VertexFactory);
@@ -276,7 +269,7 @@ struct FPMUMeshSectionUpdateData
     bool bUsePositionAsUV;
 };
 
-static void ConvertPMUMeshToDynMeshVertex(FPMUMeshBufferVertex& DynamicVertex, const FPMUMeshVertex& PMUVertex, const bool bUsePositionAsUV)
+static void ConvertPMUMeshToDynMeshVertex(FPMUPackedVertex& DynamicVertex, const FPMUMeshVertex& PMUVertex, const bool bUsePositionAsUV)
 {
     DynamicVertex.Position = FVector4(PMUVertex.Position, 0);
     DynamicVertex.Color = PMUVertex.Color;
@@ -287,8 +280,6 @@ static void ConvertPMUMeshToDynMeshVertex(FPMUMeshBufferVertex& DynamicVertex, c
     DynamicVertex.TangentZ = FVector4(Normal, 1.f);
     DynamicVertex.TangentX = FVector(Normal.Z, Normal.Y, -Normal.X);
 }
-
-
 
 // Procedural mesh scene proxy
 class FPMUMeshSceneProxy : public FPrimitiveSceneProxy
@@ -302,8 +293,8 @@ public:
     {
         check(IsValid(Component));
 
-        ConstructSections(*Component);
-        ConstructSectionsDirect(*Component);
+        ConstructSectionsFromGeometry(*Component);
+        ConstructSectionsFromResource(*Component);
     }
 
     virtual ~FPMUMeshSceneProxy()
@@ -317,7 +308,7 @@ public:
             }
         }
 
-        for (FPMUMeshProxySection_Direct* Section : DirectSections)
+        for (FPMUMeshProxySection* Section : DirectSections)
         {
             if (Section != nullptr)
             {
@@ -327,8 +318,10 @@ public:
         }
     }
 
-    void ConstructSections(UPMUMeshComponent& Component)
+    void ConstructSectionsFromGeometry(UPMUMeshComponent& Component)
     {
+        ERHIFeatureLevel::Type FeatureLevel = GetScene().GetFeatureLevel();
+
         const int32 NumSections = Component.MeshSections.Num();
         Sections.AddZeroed(NumSections);
 
@@ -339,7 +332,7 @@ public:
             if (SrcSection.IndexBuffer.Num() > 0 && SrcSection.VertexBuffer.Num() > 0)
             {
                 // Create new section
-                Sections[SectionIdx] = new FPMUMeshProxySection();
+                Sections[SectionIdx] = new FPMUMeshProxySection(FeatureLevel);
                 FPMUMeshProxySection& DstSection(*Sections[SectionIdx]);
 
                 // Copy data from vertex buffer
@@ -349,32 +342,27 @@ public:
                 const bool bUsePositionAsUV = SrcSection.bUsePositionAsUV;
 
                 // Allocate verts
-                DstSection.VertexBuffer.Vertices.SetNumUninitialized(NumVerts);
+                DstSection.VertexCount = NumVerts;
+                DstSection.Buffer.GetVBArray().SetNumUninitialized(NumVerts);
                 // Copy verts
-                for (int32 VertIdx = 0; VertIdx < NumVerts; VertIdx++)
+                for (int32 i=0; i<NumVerts; ++i)
                 {
-                    const FPMUMeshVertex& PMUVertex(SrcSection.VertexBuffer[VertIdx]);
-                    FPMUMeshBufferVertex& DynamicVertex(DstSection.VertexBuffer.Vertices[VertIdx]);
+                    const FPMUMeshVertex& PMUVertex(SrcSection.VertexBuffer[i]);
+                    FPMUPackedVertex& DynamicVertex(DstSection.Buffer.GetVBArray()[i]);
                     ConvertPMUMeshToDynMeshVertex(DynamicVertex, PMUVertex, bUsePositionAsUV);
                 }
 
                 // Copy index buffer
-                DstSection.IndexBuffer.Indices = SrcSection.IndexBuffer;
-
-                // Init vertex factory
-                DstSection.VertexFactory.Init(&DstSection.VertexBuffer);
-
-                TArray<uint32> Indices;
-                Indices.SetNum(DstSection.IndexBuffer.Indices.Num());
-                for (int32 i = 0; i < Indices.Num(); i++)
-                {
-                    Indices[i] = DstSection.IndexBuffer.Indices[i];
-                }
+                DstSection.IndexCount = SrcSection.IndexBuffer.Num();
+                DstSection.Buffer.GetIBArray().SetNumUninitialized(DstSection.IndexCount);
+                FMemory::Memcpy(
+                    DstSection.Buffer.GetIBArray().GetData(),
+                    SrcSection.IndexBuffer.GetData(),
+                    SrcSection.IndexBuffer.GetTypeSize() * DstSection.IndexCount
+                    );
 
                 // Enqueue initialization of render resource
-                BeginInitResource(&DstSection.VertexBuffer);
-                BeginInitResource(&DstSection.IndexBuffer);
-                BeginInitResource(&DstSection.VertexFactory);
+                DstSection.InitResources();
 
                 // Grab material
                 DstSection.Material = Component.GetMaterial(SectionIdx);
@@ -389,8 +377,10 @@ public:
         }
     }
 
-    void ConstructSectionsDirect(UPMUMeshComponent& Component)
+    void ConstructSectionsFromResource(UPMUMeshComponent& Component)
     {
+        ERHIFeatureLevel::Type FeatureLevel = GetScene().GetFeatureLevel();
+
         const int32 NumSections = Component.SectionResources.Num();
         DirectSections.AddZeroed(NumSections);
 
@@ -402,8 +392,8 @@ public:
             {
                 // Create new section
 
-                DirectSections[SectionIdx] = new FPMUMeshProxySection_Direct(SrcSection);
-                FPMUMeshProxySection_Direct& DstSection(*DirectSections[SectionIdx]);
+                DirectSections[SectionIdx] = new FPMUMeshProxySection(FeatureLevel, SrcSection);
+                FPMUMeshProxySection& DstSection(*DirectSections[SectionIdx]);
 
                 DstSection.InitResources();
 
@@ -427,6 +417,7 @@ public:
 
         check(IsInRenderingThread());
 
+#if 0
         // Check we have data 
         if (SectionData != nullptr)
         {
@@ -438,7 +429,7 @@ public:
 
                 // Lock vertex buffer
                 const int32 NumVerts = SectionData->NewVertexBuffer.Num();
-                FPMUMeshBufferVertex* VertexBufferData = (FPMUMeshBufferVertex*)RHILockVertexBuffer(Section->VertexBuffer.VertexBufferRHI, 0, NumVerts * sizeof(FPMUMeshBufferVertex), RLM_WriteOnly);
+                FPMUPackedVertex* VertexBufferData = (FPMUPackedVertex*) RHILockVertexBuffer(Section->VertexBuffer.VertexBufferRHI, 0, NumVerts * sizeof(FPMUPackedVertex), RLM_WriteOnly);
 
                 // Whether to use vertex uv or position as uv
                 const bool bUsePositionAsUV = SectionData->bUsePositionAsUV;
@@ -447,7 +438,7 @@ public:
                 for (int32 VertIdx = 0; VertIdx < NumVerts; VertIdx++)
                 {
                     const FPMUMeshVertex& PMUVertex(SectionData->NewVertexBuffer[VertIdx]);
-                    FPMUMeshBufferVertex& DynamicVertex(VertexBufferData[VertIdx]);
+                    FPMUPackedVertex& DynamicVertex(VertexBufferData[VertIdx]);
                     ConvertPMUMeshToDynMeshVertex(DynamicVertex, PMUVertex, bUsePositionAsUV);
                 }
 
@@ -458,6 +449,7 @@ public:
             // Free data sent from game thread
             delete SectionData;
         }
+#endif
     }
 
     void SetSectionVisibility_RenderThread(int32 SectionIndex, bool bNewVisibility)
@@ -504,13 +496,13 @@ public:
 
                         FMeshBatch& Mesh = Collector.AllocateMesh();
                         FMeshBatchElement& BatchElement = Mesh.Elements[0];
-                        BatchElement.IndexBuffer = &Section->IndexBuffer;
+                        BatchElement.IndexBuffer = &Section->Buffer.IndexBuffer;
                         Mesh.bWireframe = bWireframe;
                         Mesh.VertexFactory = &Section->VertexFactory;
                         Mesh.MaterialRenderProxy = MaterialProxy;
 
                         BatchElement.FirstIndex = 0;
-                        BatchElement.NumPrimitives = Section->IndexBuffer.Indices.Num() / 3;
+                        BatchElement.NumPrimitives = Section->GetIndexCount() / 3;
                         BatchElement.MinVertexIndex = 0;
                         BatchElement.MaxVertexIndex = Section->GetVertexCount() - 1;
                         BatchElement.PrimitiveUniformBuffer = CreatePrimitiveUniformBufferImmediate(
@@ -528,7 +520,6 @@ public:
 
                         if (bWireframe)
                         {
-                            Mesh.bWireframe = true;
                             Mesh.bDisableBackfaceCulling = true;
                         }
 
@@ -539,7 +530,7 @@ public:
         }
 
         // Iterate over direct sections
-        for (FPMUMeshProxySection_Direct* Section : DirectSections)
+        for (FPMUMeshProxySection* Section : DirectSections)
         {
             if (Section != nullptr && Section->bSectionVisible)
             {
@@ -577,7 +568,6 @@ public:
 
                         if (bWireframe)
                         {
-                            Mesh.bWireframe = true;
                             Mesh.bDisableBackfaceCulling = true;
                         }
 
@@ -625,6 +615,12 @@ public:
         return !MaterialRelevance.bDisableDepthTest;
     }
 
+	virtual SIZE_T GetTypeHash() const override
+	{
+		static size_t UniquePointer;
+		return reinterpret_cast<size_t>(&UniquePointer);
+	}
+
     virtual uint32 GetMemoryFootprint(void) const override
     {
         return(sizeof(*this) + GetAllocatedSize());
@@ -637,8 +633,8 @@ public:
 
 private:
 
-    TArray<FPMUMeshProxySection*>        Sections;
-    TArray<FPMUMeshProxySection_Direct*> DirectSections;
+    TArray<FPMUMeshProxySection*> Sections;
+    TArray<FPMUMeshProxySection*> DirectSections;
 
     UBodySetup* BodySetup;
     FMaterialRelevance MaterialRelevance;
@@ -967,11 +963,11 @@ FPMUMeshSection UPMUMeshComponent::CreateSectionFromSectionResource(int32 Sectio
 
         for (int32 i=0; i<SrcVB.Num(); ++i)
         {
-            const FDynamicMeshVertex& SrcVert(SrcVB[i]);
+            const FPMUPackedVertex& SrcVert(SrcVB[i]);
             FPMUMeshVertex DstVert;
 
             DstVert.Position = SrcVert.Position;
-            DstVert.Normal   = SrcVert.TangentZ;
+            DstVert.Normal   = SrcVert.TangentZ.ToFVector();
             DstVert.UV0      = SrcVert.TextureCoordinate;
             DstVert.Color    = SrcVert.Color;
 
@@ -1001,10 +997,10 @@ void UPMUMeshComponent::CreateSectionBuffersFromSectionResource(int32 SectionInd
 
         for (int32 i=0; i<SrcVB.Num(); ++i)
         {
-            const FDynamicMeshVertex& SrcVert(SrcVB[i]);
+            const FPMUPackedVertex& SrcVert(SrcVB[i]);
 
             Positions[i] = SrcVert.Position;
-            Normals[i] = SrcVert.TangentZ;
+            Normals[i] = SrcVert.TangentZ.ToFVector();
 
             LocalBounds += SrcVert.Position;
         }
@@ -1315,26 +1311,33 @@ void UPMUMeshComponent::UpdateCollision()
     }
 }
 
-void UPMUMeshComponent::FinishPhysicsAsyncCook(UBodySetup* FinishedBodySetup)
+void UPMUMeshComponent::FinishPhysicsAsyncCook(bool bSuccess, UBodySetup* FinishedBodySetup)
 {
-    TArray<UBodySetup*> NewQueue;
-    NewQueue.Reserve(AsyncBodySetupQueue.Num());
+	TArray<UBodySetup*> NewQueue;
+	NewQueue.Reserve(AsyncBodySetupQueue.Num());
 
-    int32 FoundIdx;
-    if (AsyncBodySetupQueue.Find(FinishedBodySetup, FoundIdx))
-    {
-        // The new body was found in the array meaning it's newer so use it
-        MeshBodySetup = FinishedBodySetup;
-        RecreatePhysicsState();
+	int32 FoundIdx;
+	if (AsyncBodySetupQueue.Find(FinishedBodySetup, FoundIdx))
+	{
+		if (bSuccess)
+		{
+			//The new body was found in the array meaning it's newer so use it
+			MeshBodySetup = FinishedBodySetup;
+			RecreatePhysicsState();
 
-        // Remove any async body setups that were requested before this one
-        for (int32 AsyncIdx = FoundIdx + 1; AsyncIdx < AsyncBodySetupQueue.Num(); ++AsyncIdx)
-        {
-            NewQueue.Emplace(AsyncBodySetupQueue[AsyncIdx]);
-        }
+			//remove any async body setups that were requested before this one
+			for (int32 AsyncIdx = FoundIdx + 1; AsyncIdx < AsyncBodySetupQueue.Num(); ++AsyncIdx)
+			{
+				NewQueue.Add(AsyncBodySetupQueue[AsyncIdx]);
+			}
 
-        AsyncBodySetupQueue = NewQueue;
-    }
+			AsyncBodySetupQueue = NewQueue;
+		}
+		else
+		{
+			AsyncBodySetupQueue.RemoveAt(FoundIdx);
+		}
+	}
 }
 
 UBodySetup* UPMUMeshComponent::GetBodySetup()

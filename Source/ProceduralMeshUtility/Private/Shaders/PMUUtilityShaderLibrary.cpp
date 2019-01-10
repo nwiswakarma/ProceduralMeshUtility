@@ -27,7 +27,6 @@
 
 #include "Shaders/PMUUtilityShaderLibrary.h"
 
-#include "CanvasTypes.h"
 #include "UniformBuffer.h"
 #include "RHICommandList.h"
 #include "RHIStaticStates.h"
@@ -41,11 +40,29 @@
 
 #include "ProceduralMeshUtility.h"
 #include "Rendering/PMURenderingLibrary.h"
+#include "RHI/PMURHIUtilityLibrary.h"
 #include "Shaders/PMUShaderDefinitions.h"
 #include "Shaders/Filters/PMUFilterShaderBase.h"
 
 #include "EarcutTypes.h"
 #include "AJCUtilityLibrary.h"
+
+static TGlobalResource<FPMUFilterVertexBuffer> GPMUFilterVertexBuffer;
+
+void FPMUFilterVertexBuffer::InitRHI()
+{
+    // Create a static vertex buffer
+    FRHIResourceCreateInfo CreateInfo;
+    VertexBufferRHI = RHICreateVertexBuffer(sizeof(FScreenVertex) * 4, BUF_Static, CreateInfo);
+    void* DataPtr = RHILockVertexBuffer(VertexBufferRHI, 0, sizeof(FScreenVertex) * 4, RLM_WriteOnly);
+    // Generate the vertices used
+    FScreenVertex* Vertices = reinterpret_cast<FScreenVertex*>(DataPtr);
+	Vertices[0] = { { -1.0f,  1.0f }, { 0.f, 1.f } };
+	Vertices[1] = { {  1.0f,  1.0f }, { 1.f, 1.f } };
+	Vertices[2] = { { -1.0f, -1.0f }, { 0.f, 0.f } };
+	Vertices[3] = { {  1.0f, -1.0f }, { 1.f, 0.f } };
+    RHIUnlockVertexBuffer(VertexBufferRHI);
+}
 
 class FPMUUtilityShaderLibraryDrawScreenVS : public FPMUBaseVertexShader
 {
@@ -68,7 +85,7 @@ public:
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform, const FMaterial* Material)
+    static bool ShouldCompilePermutation(EShaderPlatform Platform, const FMaterial* Material)
     {
 		return Material->IsUIMaterial() || Material->GetMaterialDomain() == MD_PostProcess;
     }
@@ -77,7 +94,7 @@ public:
     {
         FMaterialShader::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
         OutEnvironment.SetDefine(TEXT("PMU_USE_SOURCE_MAP"), 1);
-        OutEnvironment.SetDefine(TEXT("PMU_FILTER_HAS_VALID_MATERIAL_DOMAIN"), ShouldCache(Platform, Material) ? 1 : 0);
+        OutEnvironment.SetDefine(TEXT("PMU_FILTER_HAS_VALID_MATERIAL_DOMAIN"), ShouldCompilePermutation(Platform, Material) ? 1 : 0);
     }
 
     PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(FPMUUtilityShaderLibraryDrawScreenMaterialPS)
@@ -140,14 +157,14 @@ public:
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
-        return RHISupportsComputeShaders(Platform);
+        return RHISupportsComputeShaders(Parameters.Platform);
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
     }
 
     PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(FPMUUtilityShaderLibraryGetTexturePointValues)
@@ -190,6 +207,11 @@ public:
 };
 
 IMPLEMENT_SHADER_TYPE(, FPMUUtilityShaderLibraryGetTexturePointValues, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryTexturePointValues.usf"), TEXT("MainCS"), SF_Compute);
+
+FVertexBufferRHIRef& UPMUUtilityShaderLibrary::GetFilterVertexBuffer()
+{
+    return GPMUFilterVertexBuffer.VertexBufferRHI;
+}
 
 void UPMUUtilityShaderLibrary::DrawPolyPoints(
     UObject* WorldContextObject,
@@ -471,7 +493,7 @@ void UPMUUtilityShaderLibrary::DrawGeometry_RT(
 
     // Draw primitives
 
-    DrawIndexedPrimitiveUP(
+    FPMURHIUtilityLibrary::DrawIndexedPrimitiveVolatile(
         RHICmdList,
         PT_TriangleList,
         0,
@@ -490,7 +512,6 @@ void UPMUUtilityShaderLibrary::DrawGeometry_RT(
         RHICmdList.CopyToResolveTarget(
             TextureResource->GetRenderTargetTexture(),
             TextureResource->TextureRHI,
-            false,
             FResolveParams()
             );
     }
@@ -831,16 +852,10 @@ void UPMUUtilityShaderLibrary::ApplyFilter_RT(
     // Bind shader parameters
     FilterShaderWorker->BindPixelShaderParameters(RHICmdList, FeatureLevel);
 
-    // Draw primitives
+    // Draw first pass
 
-    FScreenVertex Vertices[4];
-	Vertices[0] = { { -1.0f,  1.0f }, { 0.f, 1.f } };
-	Vertices[1] = { {  1.0f,  1.0f }, { 1.f, 1.f } };
-	Vertices[2] = { { -1.0f, -1.0f }, { 0.f, 0.f } };
-	Vertices[3] = { {  1.0f, -1.0f }, { 1.f, 0.f } };
-    const uint32 VertexDataStride = sizeof(FScreenVertex);
-
-    DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, Vertices, VertexDataStride);
+    RHICmdList.SetStreamSource(0, UPMUUtilityShaderLibrary::GetFilterVertexBuffer(), 0);
+    RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, 1);
 
     // Draw multi-pass if required
     if (bIsValidMultiPass)
@@ -857,7 +872,7 @@ void UPMUUtilityShaderLibrary::ApplyFilter_RT(
 
             SetRenderTarget(RHICmdList, TextureRTV1, FTextureRHIRef());
             FilterShaderWorker->BindSwapTexture(RHICmdList, FeatureLevel, TextureRTV0);
-            DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, Vertices, VertexDataStride);
+            RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, 1);
         }
 
         // Make sure TextureRTV has the last drawn render target
@@ -875,7 +890,6 @@ void UPMUUtilityShaderLibrary::ApplyFilter_RT(
     RHICmdList.CopyToResolveTarget(
         TextureRTV,
         TextureRSV,
-        false,
         FResolveParams()
         );
 
@@ -1119,8 +1133,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter_RT(
         *MaterialRenderProxy->GetMaterial(FeatureLevel),
         View,
         View.ViewUniformBuffer,
-        true,
-        ESceneRenderTargetsMode::SetTextures
+        ESceneTextureSetupMode::None
         );
 
 	{
@@ -1138,14 +1151,8 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter_RT(
 
     // Draw primitives
 
-    FScreenVertex Vertices[4];
-	Vertices[0] = { { -1.0f,  1.0f }, { 0.f, 1.f } };
-	Vertices[1] = { {  1.0f,  1.0f }, { 1.f, 1.f } };
-	Vertices[2] = { { -1.0f, -1.0f }, { 0.f, 0.f } };
-	Vertices[3] = { {  1.0f, -1.0f }, { 1.f, 0.f } };
-    const uint32 VertexDataStride = sizeof(FScreenVertex);
-
-    DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, Vertices, VertexDataStride);
+    RHICmdList.SetStreamSource(0, UPMUUtilityShaderLibrary::GetFilterVertexBuffer(), 0);
+    RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, 1);
 
     // Draw multi-pass if required
     if (bIsMultiPass)
@@ -1165,7 +1172,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter_RT(
             // Bind swap texture
             PSShader->BindTexture(RHICmdList, TEXT("SourceMap"), TEXT("SourceMapSampler"), TextureRTV0, TextureSampler);
 
-            DrawPrimitiveUP(RHICmdList, PT_TriangleStrip, 2, Vertices, VertexDataStride);
+            RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, 1);
         }
 
         // Make sure TextureRTV has the last drawn render target
@@ -1183,7 +1190,6 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter_RT(
     RHICmdList.CopyToResolveTarget(
         TextureRTV,
         TextureRSV,
-        false,
         FResolveParams()
         );
 

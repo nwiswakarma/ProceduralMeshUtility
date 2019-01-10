@@ -115,7 +115,7 @@ void FPMUPolyPath::GeneratePolyIslandImpl(const FPMUPolyIslandParams& PolyIsland
             const FAJCVectorPath& PointPath(ResultPaths[i]);
             const double AreaSq = FMath::Abs(ClipperLib::Area(PolyPointPaths[i]));
 
-            UE_LOG(LogTemp,Warning,
+            UE_LOG(UntPMU,Warning,
                 TEXT("GeneratePoly() (Flags: %d) - ResultPath[%d]: (Num: %d) (Area: %f)"),
                 Flags,
                 i,
@@ -132,7 +132,7 @@ void FPMUPolyPath::GeneratePolyIslandImpl(const FPMUPolyIslandParams& PolyIsland
 
         if (ResultPaths.IsValidIndex(LargestPathIndex))
         {
-            UE_LOG(LogTemp,Warning, TEXT("GeneratePoly() LargestPathIndex: %d"), LargestPathIndex);
+            UE_LOG(UntPMU,Warning, TEXT("GeneratePoly() LargestPathIndex: %d"), LargestPathIndex);
 
             FAJCVectorPath& PointPath(ResultPaths[LargestPathIndex]);
 
@@ -151,7 +151,7 @@ void FPMUPolyPath::GeneratePolyIslandImpl(const FPMUPolyIslandParams& PolyIsland
             const FAJCVectorPath& PointPath(ResultPaths[i]);
             const double AreaSq = ClipperLib::Area(PolyPointPaths[i]);
 
-            UE_LOG(LogTemp,Warning,
+            UE_LOG(UntPMU,Warning,
                 TEXT("GeneratePoly() (Flags: %d) - ResultPath[%d]: (Num: %d) (Area: %f) (AreaSq > MinAreaSq: %d)"),
                 Flags,
                 i,
@@ -170,7 +170,7 @@ void FPMUPolyPath::GeneratePolyIslandImpl(const FPMUPolyIslandParams& PolyIsland
 
 void FPMUPolyPath::GeneratePolyIsland(const FPMUPolyIslandParams& PolyIslandParams, float ShapeOffset, uint8 Flags)
 {
-    UE_LOG(LogTemp,Warning, TEXT("GeneratePoly(): (Seed: %d) (MinArea: %f (%f))"),
+    UE_LOG(UntPMU,Warning, TEXT("GeneratePoly(): (Seed: %d) (MinArea: %f (%f))"),
         PolyIslandParams.RandomSeed,
         PolyIslandParams.MinArea,
         PolyIslandParams.GetMinAreaSq()

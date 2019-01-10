@@ -38,7 +38,12 @@ class FPMUFilterRenderThreadWorkerBase;
 class UMaterialInterface;
 class FMaterialRenderProxy;
 class FMaterial;
-//class FCanvas;
+
+class FPMUFilterVertexBuffer : public FVertexBuffer
+{
+public:
+	virtual void InitRHI() override;
+};
 
 UCLASS()
 class PROCEDURALMESHUTILITY_API UPMUUtilityShaderLibrary : public UBlueprintFunctionLibrary
@@ -46,6 +51,8 @@ class PROCEDURALMESHUTILITY_API UPMUUtilityShaderLibrary : public UBlueprintFunc
 	GENERATED_BODY()
 
 public:
+
+    static FVertexBufferRHIRef& GetFilterVertexBuffer();
 
     UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", UnsafeDuringActorConstruction="true"))
     static void DrawPolyPoints(

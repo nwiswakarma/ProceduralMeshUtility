@@ -41,14 +41,14 @@ public:
 
 public:
 
-    static bool ShouldCache(EShaderPlatform Platform)
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
     {
         return true;
     }
 
-    static void ModifyCompilationEnvironment(EShaderPlatform Platform, FShaderCompilerEnvironment& OutEnvironment)
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
-        FBaseType::ModifyCompilationEnvironment(Platform, OutEnvironment);
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
         OutEnvironment.SetDefine(TEXT("USE_BLEND_INCLINE")  , ((BuildFlags & (1<<0)) != 0) ? 1 : 0);
         OutEnvironment.SetDefine(TEXT("USE_DIRECTIONAL_MAP"), ((BuildFlags & (1<<1)) != 0) ? 1 : 0);
         OutEnvironment.SetDefine(TEXT("USE_DUAL_SAMPLING")  , ((BuildFlags & (1<<2)) != 0) ? 1 : 0);
