@@ -30,7 +30,6 @@
 #include "CoreMinimal.h"
 #include "Mesh/PMUMeshTypes.h"
 #include "PMUMarchingSquaresMap.h"
-#include "PMUMarchingSquaresTypes.h"
 #include "PMUMarchingSquaresMapRef.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FPMUMarchingSquaresMapRef_OnBuildMapDone, bool, bResult, int32, FillType);
@@ -74,29 +73,8 @@ public:
     UPROPERTY(EditAnywhere, Category="Height Settings", BlueprintReadWrite)
     float BaseHeightOffset = 0.5f;
 
-    UPROPERTY(EditAnywhere, Category="Height Settings", BlueprintReadWrite)
-    float BaseOffsetScale = 1.0f;
-
-    UPROPERTY(EditAnywhere, Category="Height Settings", BlueprintReadWrite)
-    float SurfaceOffsetScale = 1.0f;
-
-    UPROPERTY(EditAnywhere, Category="Height Settings", BlueprintReadWrite)
-    float ExtrudeOffsetScale = -1.0f;
-
     UPROPERTY(EditAnywhere, Category="Texture Settings", BlueprintReadWrite)
-    int32 SurfaceHeightTextureMipLevel = 0;
-
-    UPROPERTY(EditAnywhere, Category="Texture Settings", BlueprintReadWrite)
-    int32 ExtrudeHeightTextureMipLevel = 0;
-
-    UPROPERTY(EditAnywhere, Category="Texture Settings", BlueprintReadWrite)
-    int32 HeightOffsetTextureMipLevel = 0;
-
-    UPROPERTY(EditAnywhere, Category="Texture Settings", BlueprintReadWrite, meta=(DisplayName="Height Offset Texture Sample Offset"))
-    FVector2D HeightOffsetSampleOffset;
-
-    UPROPERTY(EditAnywhere, Category="Texture Settings", BlueprintReadWrite, meta=(DisplayName="Height Offset Texture Sample Scale"))
-    float HeightOffsetSampleScale = 1.f;
+    int32 HeightMapMipLevel = 0;
 
     UPROPERTY(BlueprintAssignable, Category="Map Settings")
     FPMUMarchingSquaresMapRef_OnBuildMapDone OnBuildMapDone;
@@ -118,8 +96,6 @@ public:
     {
         return Map;
     }
-
-    void SetHeightTexture(FTexture2DRHIParamRef HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType);
 
     UFUNCTION(BlueprintCallable)
     bool HasValidMap() const
@@ -146,13 +122,16 @@ public:
     void ClearMap();
 
     UFUNCTION(BlueprintCallable)
-    void SetHeightTextureFromUTexture2D(UTexture2D* HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType);
+    void SetHeightMap(FPMUShaderTextureParameterInput TextureInput);
 
     UFUNCTION(BlueprintCallable)
-    void SetHeightTextureFromRTT(UTextureRenderTarget2D* HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType);
+    void SetHeightMapFromUTexture2D(UTexture2D* HeightMap);
 
     UFUNCTION(BlueprintCallable)
-    void SetHeightTextureFromSubstanceTexture(UObject* HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType);
+    void SetHeightMapFromRTT(UTextureRenderTarget2D* HeightMap);
+
+    UFUNCTION(BlueprintCallable)
+    void SetHeightMapFromSubstanceTexture(UObject* HeightMap);
 
     // SECTION FUNCTIONS
 

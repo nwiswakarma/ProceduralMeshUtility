@@ -158,22 +158,18 @@ public:
 
     PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMarchingSquaresMapTriangulateFillCellCS)
 
-    PMU_DECLARE_SHADER_PARAMETERS_3(
+    PMU_DECLARE_SHADER_PARAMETERS_1(
         Texture,
         FShaderResourceParameter,
         FResourceId,
-        "SurfaceHeightTexture", SurfaceHeightTexture,
-        "ExtrudeHeightTexture", ExtrudeHeightTexture,
-        "HeightOffsetTexture",  HeightOffsetTexture
+        "HeightMap", HeightMap
         )
 
-    PMU_DECLARE_SHADER_PARAMETERS_3(
+    PMU_DECLARE_SHADER_PARAMETERS_1(
         Sampler,
         FShaderResourceParameter,
         FResourceId,
-        "samplerSurfaceHeightTexture", SurfaceHeightTextureSampler,
-        "samplerExtrudeHeightTexture", ExtrudeHeightTextureSampler,
-        "samplerHeightOffsetTexture",  HeightOffsetTextureSampler
+        "samplerHeightMap", SurfaceHeightMapSampler
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_3(
@@ -193,7 +189,7 @@ public:
         "OutIndexData",  OutIndexData
         )
 
-    PMU_DECLARE_SHADER_PARAMETERS_10(
+    PMU_DECLARE_SHADER_PARAMETERS_9(
         Value,
         FShaderParameter,
         FParameterId,
@@ -205,7 +201,6 @@ public:
         "_BlockOffset",   Params_BlockOffset,
         "_HeightScale",   Params_HeightScale,
         "_HeightOffset",  Params_HeightOffset,
-        "_SampleOffset",  Params_SampleOffset,
         "_Color",         Params_Color
         )
 };
@@ -234,22 +229,18 @@ public:
 
     PMU_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMarchingSquaresMapTriangulateEdgeCellCS)
 
-    PMU_DECLARE_SHADER_PARAMETERS_3(
+    PMU_DECLARE_SHADER_PARAMETERS_1(
         Texture,
         FShaderResourceParameter,
         FResourceId,
-        "SurfaceHeightTexture", SurfaceHeightTexture,
-        "ExtrudeHeightTexture", ExtrudeHeightTexture,
-        "HeightOffsetTexture",  HeightOffsetTexture
+        "HeightMap", HeightMap
         )
 
-    PMU_DECLARE_SHADER_PARAMETERS_3(
+    PMU_DECLARE_SHADER_PARAMETERS_1(
         Sampler,
         FShaderResourceParameter,
         FResourceId,
-        "samplerSurfaceHeightTexture", SurfaceHeightTextureSampler,
-        "samplerExtrudeHeightTexture", ExtrudeHeightTextureSampler,
-        "samplerHeightOffsetTexture",  HeightOffsetTextureSampler
+        "samplerHeightMap", SurfaceHeightMapSampler
         )
 
     PMU_DECLARE_SHADER_PARAMETERS_5(
@@ -271,7 +262,7 @@ public:
         "OutIndexData",  OutIndexData
         )
 
-    PMU_DECLARE_SHADER_PARAMETERS_10(
+    PMU_DECLARE_SHADER_PARAMETERS_9(
         Value,
         FShaderParameter,
         FParameterId,
@@ -283,7 +274,6 @@ public:
         "_BlockOffset",   Params_BlockOffset,
         "_HeightScale",   Params_HeightScale,
         "_HeightOffset",  Params_HeightOffset,
-        "_SampleOffset",  Params_SampleOffset,
         "_Color",         Params_Color
         )
 };
@@ -307,28 +297,15 @@ void FPMUMarchingSquaresMap::SetDimension(FIntPoint InDimension)
     }
 }
 
-void FPMUMarchingSquaresMap::SetHeightTexture(FTexture2DRHIParamRef HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType)
+void FPMUMarchingSquaresMap::SetHeightMap(FTexture2DRHIParamRef InHeightMap)
 {
-    switch (HeightTextureType)
-    {
-        case EPMUMarchingSquaresHeightTextureType::SURFACE:
-            SurfaceHeightTexture = HeightTexture;
-            break;
-
-        case EPMUMarchingSquaresHeightTextureType::EXTRUDE:
-            ExtrudeHeightTexture = HeightTexture;
-            break;
-
-        case EPMUMarchingSquaresHeightTextureType::OFFSET:
-            HeightOffsetTexture = HeightTexture;
-            break;
-    }
+    HeightMap = InHeightMap;
 }
 
 void FPMUMarchingSquaresMap::ClearMap()
 {
     ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
-        FMarchingSquaresMap_InitializeVoxelData,
+        FMarchingSquaresMap_ClearMap,
         FPMUMarchingSquaresMap*, Map, this,
         {
             Map->ClearMap_RT(RHICmdList);
@@ -700,37 +677,21 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
             ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapTriangulateFillCellCS<1>>(RHIShaderMap);
         }
 
-        FSamplerStateRHIParamRef HeightTextureSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
-        FSamplerStateRHIParamRef OffsetTextureSampler = TStaticSamplerState<SF_Bilinear,AM_Wrap,AM_Wrap,AM_Wrap>::GetRHI();
+        FSamplerStateRHIParamRef HeightMapSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
 
         FVector2D HeightScale;
         HeightScale.X = SurfaceHeightScale;
         HeightScale.Y = ExtrudeHeightScale;
 
-        FVector4 HeightOffset;
-        HeightOffset.X = BaseHeightOffset;
-        HeightOffset.Y = BaseOffsetScale;
-        HeightOffset.Z = SurfaceOffsetScale;
-        HeightOffset.W = ExtrudeOffsetScale;
-
-        FVector4 SampleOffset;
-        SampleOffset.X = HeightOffsetSampleOffset.X;
-        SampleOffset.Y = HeightOffsetSampleOffset.Y;
-        SampleOffset.Z = HeightOffsetSampleScale;
-        SampleOffset.W = HeightOffsetSampleScale;
-
-        FIntPoint SampleLevel;
-        SampleLevel.X = FMath::Max(0, SurfaceHeightTextureMipLevel);
-        SampleLevel.Y = FMath::Max(0, HeightOffsetTextureMipLevel);
-
         FIntPoint GeomCount;
         GeomCount.X = VCount;
         GeomCount.Y = ICount;
 
+        float  HeightOffset = BaseHeightOffset;
+        uint32 SampleLevel  = FMath::Max(0, HeightMapMipLevel);
+
         ComputeShader->SetShader(RHICmdList);
-        ComputeShader->BindTexture(RHICmdList, TEXT("SurfaceHeightTexture"), TEXT("samplerSurfaceHeightTexture"), SurfaceHeightTexture, HeightTextureSampler);
-        ComputeShader->BindTexture(RHICmdList, TEXT("ExtrudeHeightTexture"), TEXT("samplerExtrudeHeightTexture"), ExtrudeHeightTexture, HeightTextureSampler);
-        ComputeShader->BindTexture(RHICmdList, TEXT("HeightOffsetTexture"),  TEXT("samplerHeightOffsetTexture"),  HeightOffsetTexture,  OffsetTextureSampler);
+        ComputeShader->BindTexture(RHICmdList, TEXT("HeightMap"), TEXT("samplerHeightMap"), HeightMap, HeightMapSampler);
         ComputeShader->BindSRV(RHICmdList, TEXT("OffsetData"),     OffsetData.SRV);
         ComputeShader->BindSRV(RHICmdList, TEXT("SumData"),        SumData.SRV);
         ComputeShader->BindSRV(RHICmdList, TEXT("FillCellIdData"), FillCellIdData.SRV);
@@ -744,7 +705,6 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
         ComputeShader->SetParameter(RHICmdList, TEXT("_BlockOffset"),   BlockOffset);
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"),   HeightScale);
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightOffset"),  HeightOffset);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_SampleOffset"),  SampleOffset);
         ComputeShader->SetParameter(RHICmdList, TEXT("_Color"),         FVector4(1,0,0,1));
         ComputeShader->DispatchAndClear(RHICmdList, FillCellCount, 1, 1);
     }
@@ -762,37 +722,21 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
             ComputeShader = *TShaderMapRef<TPMUMarchingSquaresMapTriangulateEdgeCellCS<1>>(RHIShaderMap);
         }
 
-        FSamplerStateRHIParamRef HeightTextureSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
-        FSamplerStateRHIParamRef OffsetTextureSampler = TStaticSamplerState<SF_Bilinear,AM_Wrap,AM_Wrap,AM_Wrap>::GetRHI();
+        FSamplerStateRHIParamRef HeightMapSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
 
         FVector2D HeightScale;
         HeightScale.X = SurfaceHeightScale;
         HeightScale.Y = ExtrudeHeightScale;
 
-        FVector4 HeightOffset;
-        HeightOffset.X = BaseHeightOffset;
-        HeightOffset.Y = BaseOffsetScale;
-        HeightOffset.Z = SurfaceOffsetScale;
-        HeightOffset.W = ExtrudeOffsetScale;
-
-        FVector4 SampleOffset;
-        SampleOffset.X = HeightOffsetSampleOffset.X;
-        SampleOffset.Y = HeightOffsetSampleOffset.Y;
-        SampleOffset.Z = HeightOffsetSampleScale;
-        SampleOffset.W = HeightOffsetSampleScale;
-
-        FIntPoint SampleLevel;
-        SampleLevel.X = FMath::Max(0, SurfaceHeightTextureMipLevel);
-        SampleLevel.Y = FMath::Max(0, HeightOffsetTextureMipLevel);
-
         FIntPoint GeomCount;
         GeomCount.X = VCount;
         GeomCount.Y = ICount;
 
+        float  HeightOffset = BaseHeightOffset;
+        uint32 SampleLevel  = FMath::Max(0, HeightMapMipLevel);
+
         ComputeShader->SetShader(RHICmdList);
-        ComputeShader->BindTexture(RHICmdList, TEXT("SurfaceHeightTexture"), TEXT("samplerSurfaceHeightTexture"), SurfaceHeightTexture, HeightTextureSampler);
-        ComputeShader->BindTexture(RHICmdList, TEXT("ExtrudeHeightTexture"), TEXT("samplerExtrudeHeightTexture"), ExtrudeHeightTexture, HeightTextureSampler);
-        ComputeShader->BindTexture(RHICmdList, TEXT("HeightOffsetTexture"),  TEXT("samplerHeightOffsetTexture"),  HeightOffsetTexture,  OffsetTextureSampler);
+        ComputeShader->BindTexture(RHICmdList, TEXT("HeightMap"), TEXT("samplerHeightMap"), HeightMap, HeightMapSampler);
         ComputeShader->BindSRV(RHICmdList, TEXT("VoxelFeatureData"), VoxelFeatureData.SRV);
         ComputeShader->BindSRV(RHICmdList, TEXT("OffsetData"),       OffsetData.SRV);
         ComputeShader->BindSRV(RHICmdList, TEXT("SumData"),          SumData.SRV);
@@ -808,7 +752,6 @@ void FPMUMarchingSquaresMap::GenerateMarchingCubes_RT(uint32 FillType, bool bInG
         ComputeShader->SetParameter(RHICmdList, TEXT("_BlockOffset"),   BlockOffset);
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"),   HeightScale);
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightOffset"),  HeightOffset);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_SampleOffset"),  SampleOffset);
         ComputeShader->SetParameter(RHICmdList, TEXT("_Color"),         FVector4(1,0,0,1));
         ComputeShader->DispatchAndClear(RHICmdList, EdgeCellCount, 1, 1);
     }

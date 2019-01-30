@@ -130,6 +130,21 @@ public:
         );
 
     UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", UnsafeDuringActorConstruction="true"))
+    static void ApplyMaterial(
+        UObject* WorldContextObject,
+        UMaterialInterface* Material,
+        UTextureRenderTarget2D* RenderTarget,
+        UGWTTickEvent* CallbackEvent = nullptr
+        );
+
+    static void ApplyMaterial_RT(
+        FRHICommandListImmediate& RHICmdList,
+        ERHIFeatureLevel::Type FeatureLevel,
+        FTextureRenderTarget2DResource* RenderTargetResource,
+        const FMaterialRenderProxy* MaterialRenderProxy
+        );
+
+    UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", UnsafeDuringActorConstruction="true"))
     static void TestGPUCompute(
         UObject* WorldContextObject,
         int32 TestCount,

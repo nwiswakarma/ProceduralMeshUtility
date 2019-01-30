@@ -163,7 +163,7 @@ public:
     static void CollapseAccuteAngles(TArray<FVector2D>& OutPoints, const TArray<FVector2D>& Points, float Threshold = -.25f);
 
     UFUNCTION(BlueprintCallable)
-    static void AssignInstancesAlongPoly(TArray<int32>& InstanceIds, TArray<FVector>& Positions, TArray<FVector>& Directions, const TArray<FVector>& Points, const TArray<FVector>& InstanceDimensions);
+    static void AssignInstancesAlongPoly(int32 Seed, const TArray<FVector>& Points, const TArray<FVector>& InstanceDimensions, float HeightOffsetMin, float HeightOffsetMax, TArray<int32>& InstanceIds, TArray<FVector>& Positions, TArray<FVector>& Directions);
 
     // SUBSTANCE UTILITY
 

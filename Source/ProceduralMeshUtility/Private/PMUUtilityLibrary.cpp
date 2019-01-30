@@ -486,7 +486,7 @@ void UPMUUtilityLibrary::CollapseAccuteAngles(TArray<FVector2D>& OutPoints, cons
     }
 }
 
-void UPMUUtilityLibrary::AssignInstancesAlongPoly(TArray<int32>& InstanceIds, TArray<FVector>& Positions, TArray<FVector>& Directions, const TArray<FVector>& Points, const TArray<FVector>& InstanceDimensions)
+void UPMUUtilityLibrary::AssignInstancesAlongPoly(int32 Seed, const TArray<FVector>& Points, const TArray<FVector>& InstanceDimensions, float HeightOffsetMin, float HeightOffsetMax, TArray<int32>& InstanceIds, TArray<FVector>& Positions, TArray<FVector>& Directions)
 {
     if (Points.Num() < 3)
     {
@@ -538,10 +538,14 @@ void UPMUUtilityLibrary::AssignInstancesAlongPoly(TArray<int32>& InstanceIds, TA
             return A.Dimension.X < B.Dimension.X;
         } );
 
-    FRandomStream Rand(0);
+    FRandomStream Rand(Seed);
     const int32 InstanceCount = Instances.Num();
     const int32 PointCount = Points.Num();
     float DistAlongLine = 0.f;
+
+    float ZOffsetMin = FMath::Min(HeightOffsetMin, HeightOffsetMax);
+    float ZOffsetMax = FMath::Max(HeightOffsetMin, HeightOffsetMax);
+    bool bUseRandomZOffset = ! FMath::IsNearlyEqual(ZOffsetMin, ZOffsetMax);
 
     for (int32 i=0; i<PointCount; ++i)
     {
@@ -567,6 +571,15 @@ void UPMUUtilityLibrary::AssignInstancesAlongPoly(TArray<int32>& InstanceIds, TA
         while (DistAlongLine < LineDist)
         {
             FVector PAlongLine = P0 + PD * (DistAlongLine / LineDist);
+
+            if (bUseRandomZOffset)
+            {
+                PAlongLine.Z = Rand.FRandRange(ZOffsetMin, ZOffsetMax);
+            }
+            else
+            {
+                PAlongLine.Z = ZOffsetMin;
+            }
 
             int32 InstanceIdx = (InstanceCount-1);
             float InstanceLength = 0.f;
@@ -611,7 +624,7 @@ void UPMUUtilityLibrary::AssignInstancesAlongPoly(TArray<int32>& InstanceIds, TA
 
             FVector IPT = PT;
 
-            // If last instance extentwent over half of the line end,
+            // If last instance extent went over half of the line end,
             // Replace last direction with the average of current and next line
             //if (LastDistAlongLine > LineDist)
             {

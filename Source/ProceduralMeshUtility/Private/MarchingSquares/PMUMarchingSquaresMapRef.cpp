@@ -57,56 +57,43 @@ void UPMUMarchingSquaresMapRef::ApplyMapSettings()
 
     Map.SurfaceHeightScale = SurfaceHeightScale;
     Map.ExtrudeHeightScale = ExtrudeHeightScale;
-    Map.BaseHeightOffset = BaseHeightOffset;
 
-    Map.BaseOffsetScale = BaseOffsetScale;
-    Map.SurfaceOffsetScale = SurfaceOffsetScale;
-    Map.ExtrudeOffsetScale = ExtrudeOffsetScale;
-
-    Map.BaseOffsetScale = BaseOffsetScale;
-    Map.SurfaceOffsetScale = SurfaceOffsetScale;
-    Map.ExtrudeOffsetScale = ExtrudeOffsetScale;
-
-    Map.SurfaceHeightTextureMipLevel = SurfaceHeightTextureMipLevel;
-    Map.ExtrudeHeightTextureMipLevel = ExtrudeHeightTextureMipLevel;
-    Map.HeightOffsetTextureMipLevel = HeightOffsetTextureMipLevel;
-
-    Map.HeightOffsetSampleOffset = HeightOffsetSampleOffset;
-    Map.HeightOffsetSampleScale  = HeightOffsetSampleScale;
+    Map.BaseHeightOffset  = BaseHeightOffset;
+    Map.HeightMapMipLevel = HeightMapMipLevel;
 
     Map.MeshPrefabs = MeshPrefabs;
     Map.DebugRTT = DebugRTT;
 }
 
-void UPMUMarchingSquaresMapRef::SetHeightTexture(FTexture2DRHIParamRef HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType)
+void UPMUMarchingSquaresMapRef::SetHeightMap(FPMUShaderTextureParameterInput TextureInput)
 {
-    ENQUEUE_UNIQUE_RENDER_COMMAND_THREEPARAMETER(
-        UPMUMarchingSquaresMapRef_SetHeightTextureFromUTexture2D,
+    FPMUShaderTextureParameterInputResource TextureResource(TextureInput.GetResource_GT());
+
+    ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
+        UPMUMarchingSquaresMapRef_SetHeightMap,
         FPMUMarchingSquaresMap*, Map, &Map,
-        FTexture2DRHIParamRef, Texture2DRHI, HeightTexture,
-        TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type>, HeightTextureType, HeightTextureType,
+        FPMUShaderTextureParameterInputResource, TextureResource, TextureResource,
         {
-            Map->SetHeightTexture(Texture2DRHI, HeightTextureType);
+            Map->SetHeightMap(TextureResource.GetTextureParamRef_RT());
         } );
 }
 
-void UPMUMarchingSquaresMapRef::SetHeightTextureFromUTexture2D(UTexture2D* HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType)
+void UPMUMarchingSquaresMapRef::SetHeightMapFromUTexture2D(UTexture2D* HeightMap)
 {
-    if (IsValid(HeightTexture))
+    if (IsValid(HeightMap))
     {
-        FTexture2DResource* TextureResource = static_cast<FTexture2DResource*>(HeightTexture->Resource);
+        FTexture2DResource* TextureResource = static_cast<FTexture2DResource*>(HeightMap->Resource);
 
         if (! TextureResource)
         {
-            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromUTexture2D() ABORTED - Invalid HeightTexture resource"));
+            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightMapFromUTexture2D() ABORTED - Invalid HeightMap resource"));
             return;
         }
 
-        ENQUEUE_UNIQUE_RENDER_COMMAND_THREEPARAMETER(
-            UPMUMarchingSquaresMapRef_SetHeightTextureFromUTexture2D,
+        ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
+            UPMUMarchingSquaresMapRef_SetHeightMapFromUTexture2D,
             FPMUMarchingSquaresMap*, Map, &Map,
             FTexture2DResource*, TextureResource, TextureResource,
-            TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type>, HeightTextureType, HeightTextureType,
             {
                 FTexture2DRHIParamRef Texture2DRHI = nullptr;
 
@@ -115,28 +102,27 @@ void UPMUMarchingSquaresMapRef::SetHeightTextureFromUTexture2D(UTexture2D* Heigh
                     Texture2DRHI = TextureResource->GetTexture2DRHI();
                 }
 
-                Map->SetHeightTexture(Texture2DRHI, HeightTextureType);
+                Map->SetHeightMap(Texture2DRHI);
             } );
     }
 }
 
-void UPMUMarchingSquaresMapRef::SetHeightTextureFromRTT(UTextureRenderTarget2D* HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType)
+void UPMUMarchingSquaresMapRef::SetHeightMapFromRTT(UTextureRenderTarget2D* HeightMap)
 {
-    if (IsValid(HeightTexture))
+    if (IsValid(HeightMap))
     {
-        FTextureRenderTarget2DResource* TextureResource = static_cast<FTextureRenderTarget2DResource*>(HeightTexture->GameThread_GetRenderTargetResource());
+        FTextureRenderTarget2DResource* TextureResource = static_cast<FTextureRenderTarget2DResource*>(HeightMap->GameThread_GetRenderTargetResource());
 
         if (! TextureResource)
         {
-            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromRTT() ABORTED - Invalid HeightTexture resource"));
+            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightMapFromRTT() ABORTED - Invalid HeightMap resource"));
             return;
         }
 
-        ENQUEUE_UNIQUE_RENDER_COMMAND_THREEPARAMETER(
-            UPMUMarchingSquaresMapRef_SetHeightTextureFromUTexture2D,
+        ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
+            UPMUMarchingSquaresMapRef_SetHeightMapFromUTexture2D,
             FPMUMarchingSquaresMap*, Map, &Map,
             FTextureRenderTarget2DResource*, TextureResource, TextureResource,
-            TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type>, HeightTextureType, HeightTextureType,
             {
                 FTexture2DRHIParamRef Texture2DRHI = nullptr;
 
@@ -145,15 +131,15 @@ void UPMUMarchingSquaresMapRef::SetHeightTextureFromRTT(UTextureRenderTarget2D* 
                     Texture2DRHI = TextureResource->GetTextureRHI();
                 }
 
-                Map->SetHeightTexture(Texture2DRHI, HeightTextureType);
+                Map->SetHeightMap(Texture2DRHI);
             } );
     }
 }
 
-void UPMUMarchingSquaresMapRef::SetHeightTextureFromSubstanceTexture(UObject* HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType)
+void UPMUMarchingSquaresMapRef::SetHeightMapFromSubstanceTexture(UObject* HeightMap)
 {
 #ifdef PMU_SUBSTANCE_ENABLED
-    USubstanceTexture2D* SubstanceTexture = Cast<USubstanceTexture2D>(HeightTexture);
+    USubstanceTexture2D* SubstanceTexture = Cast<USubstanceTexture2D>(HeightMap);
 
     if (IsValid(SubstanceTexture))
     {
@@ -161,15 +147,14 @@ void UPMUMarchingSquaresMapRef::SetHeightTextureFromSubstanceTexture(UObject* He
 
         if (! TextureResource)
         {
-            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightTextureFromSubstanceTexture() ABORTED - Invalid SubstanceTexture resource"));
+            UE_LOG(LogPMU,Warning, TEXT("UPMUMarchingSquaresMapRef::SetHeightMapFromSubstanceTexture() ABORTED - Invalid SubstanceTexture resource"));
             return;
         }
 
-        ENQUEUE_UNIQUE_RENDER_COMMAND_THREEPARAMETER(
-            UPMUMarchingSquaresMapRef_SetHeightTextureFromUTexture2D,
+        ENQUEUE_UNIQUE_RENDER_COMMAND_TWOPARAMETER(
+            UPMUMarchingSquaresMapRef_SetHeightMapFromUTexture2D,
             FPMUMarchingSquaresMap*, Map, &Map,
             FSubstanceTexture2DDynamicResource*, TextureResource, TextureResource,
-            TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type>, HeightTextureType, HeightTextureType,
             {
                 FTexture2DRHIParamRef Texture2DRHI = nullptr;
 
@@ -178,7 +163,7 @@ void UPMUMarchingSquaresMapRef::SetHeightTextureFromSubstanceTexture(UObject* He
                     Texture2DRHI = (FTexture2DRHIParamRef) TextureResource->TextureRHI.GetReference();
                 }
 
-                Map->SetHeightTexture(Texture2DRHI, HeightTextureType);
+                Map->SetHeightMap(Texture2DRHI);
             } );
     }
 #endif

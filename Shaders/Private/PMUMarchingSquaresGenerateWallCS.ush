@@ -57,7 +57,11 @@ void GenerateFillCell(uint id)
     // Initialize vertex data
 
     uint4 color4 = uint4(_Color * 255.f) & 0xFF;
+#if 0
     uint  color  = color4.r | (color4.g<<8) | (color4.b<<16) | (color4.a<<24);
+#else
+    uint  color  = 0;
+#endif
 
     uint vertexOffset = offsetData.x;
     uint vertexGridOffset = SumData[GetIndex(bid, BDim.x) * _BlockOffset].x;
@@ -71,29 +75,15 @@ void GenerateFillCell(uint id)
     float3 p0 = CreatePos3(xy, CDim*BDim);
     float3 p1 = p0;
 
-    float2   OffsetUV = uv * SAMPLE_SCALE + SAMPLE_OFFSET;
-    float2   OffsetBase = GetOffsetSampleBase(OffsetUV);
-    float2x4 OffsetNESW = GetOffsetSampleNESW(OffsetUV, uvo*SAMPLE_SCALE);
-
     // Generate vertex height, normal, and tangent
 
-#if 0
-    float3 hSS = GetSurfaceHeightSample(uv, uvo, OffsetNESW);
-    float  hSV = hSS.x;
-    float2 hSD = hSS.yz;
-
-    float3 hES = GetExtrudeHeightSample(uv, uvo, OffsetNESW);
-    float  hEV = hES.x;
-    float2 hED = hES.yz;
-#else
     float2 hV = GetHeightSampleBase(uv);
     float  hSV = hV.x;
     float  hEV = hV.y;
 
-    float4 hD = GetHeightSampleNESW(uv, uvo, OffsetNESW);
+    float4 hD = GetHeightSampleNESW(uv, uvo);
     float2 hSD = hD.xz;
     float2 hED = hD.yw;
-#endif
 
     float3 n0 = -normalize(float3(-hED, 1));
     float3 n1 =  normalize(float3(-hSD, 1));
@@ -101,8 +91,8 @@ void GenerateFillCell(uint id)
     float3 t0 = -normalize(float3(1, 0, hED.x * .5f));
     float3 t1 =  normalize(float3(1, 0, hSD.x * .5f));
 
-    p0.z = (hEV - BASE_OFFSET) + OffsetBase.y;
-    p1.z = (hSV + BASE_OFFSET) + OffsetBase.x;
+    p0.z = hEV - BASE_OFFSET;
+    p1.z = hSV + BASE_OFFSET;
 
     // Pack tangents
 
@@ -150,13 +140,13 @@ void GenerateFillCell(uint id)
         OutIndexData[indexOffset+1 ] = vertexIds0[1];
         OutIndexData[indexOffset+2 ] = vertexIds0[2];
 
-        OutIndexData[indexOffset+3 ] = vertexIds1[2];
-        OutIndexData[indexOffset+4 ] = vertexIds1[1];
-        OutIndexData[indexOffset+5 ] = vertexIds1[0];
+        OutIndexData[indexOffset+3 ] = vertexIds0[0];
+        OutIndexData[indexOffset+4 ] = vertexIds0[2];
+        OutIndexData[indexOffset+5 ] = vertexIds0[3];
 
-        OutIndexData[indexOffset+6 ] = vertexIds0[0];
-        OutIndexData[indexOffset+7 ] = vertexIds0[2];
-        OutIndexData[indexOffset+8 ] = vertexIds0[3];
+        OutIndexData[indexOffset+6 ] = vertexIds1[2];
+        OutIndexData[indexOffset+7 ] = vertexIds1[1];
+        OutIndexData[indexOffset+8 ] = vertexIds1[0];
 
         OutIndexData[indexOffset+9 ] = vertexIds1[3];
         OutIndexData[indexOffset+10] = vertexIds1[2];
@@ -232,7 +222,11 @@ void GenerateEdgeCell(uint id)
     // Write vertex data
 
     uint4 color4 = uint4(_Color * 255.f) & 0xFF;
+#if 0
     uint  color  = color4.r | (color4.g<<8) | (color4.b<<16) | (color4.a<<24);
+#else
+    uint  color  = 0;
+#endif
 
     uint vertexOffset = offsetData.x;
     uint vertexGridOffset = SumData[GetIndex(bid, BDim.x) * _BlockOffset].x;
@@ -250,26 +244,15 @@ void GenerateEdgeCell(uint id)
         uint indexA = (edgeCode >> 4) & 0x0F;
         uint indexB = edgeCode & 0x0F;
 
-        bool bIsCorner = (indexA == indexB);
-        bool bIsWall   = bHasAnyWalls * !bIsCorner;
-
         float2 posA = cornerPos[indexA];
         float2 posB = cornerPos[indexB];
 
-        float  edgeAlpha  = edgeFeatures[edgeValueIdx];
+        bool bIsCorner = (indexA == indexB);
+        bool bIsWall   = bHasAnyWalls * !bIsCorner;
 
-        float2 edgePos = 0;
+        float  edgeAlpha = edgeFeatures[edgeValueIdx];
+        float2 edgePos = lerp(posA, posB, edgeAlpha*boundsMask*!bIsCorner);
         float2 edgeNrm = edgeNormals[edgeValueIdx] * bIsWall;
-
-        [flatten]
-        if (bIsCorner)
-        {
-            edgePos = posA;
-        }
-        else
-        {
-            edgePos = lerp(posA, posB, edgeAlpha * boundsMask);
-        }
 
         float2 xy = lid+edgePos;
         float2 uv = xy*uv1;
@@ -277,29 +260,15 @@ void GenerateEdgeCell(uint id)
         float3 p0 = CreatePos3(xy, CDim*BDim);
         float3 p1 = p0;
 
-        float2   OffsetUV = uv * SAMPLE_SCALE + SAMPLE_OFFSET;
-        float2   OffsetBase = GetOffsetSampleBase(OffsetUV);
-        float2x4 OffsetNESW = GetOffsetSampleNESW(OffsetUV, uvo*SAMPLE_SCALE);
-
         // Generate vertex height, normal, and tangent
 
-#if 0
-        float3 hSS = GetSurfaceHeightSample(uv, uvo, OffsetNESW);
-        float  hSV = hSS.x;
-        float2 hSD = hSS.yz;
-
-        float3 hES = GetExtrudeHeightSample(uv, uvo, OffsetNESW);
-        float  hEV = hES.x;
-        float2 hED = hES.yz;
-
-        float2 hV  = { hSV, hEV };
-#else
         float2 hV = GetHeightSampleBase(uv);
+        float  hSV = hV.x;
+        float  hEV = hV.y;
 
-        float4 hD = GetHeightSampleNESW(uv, uvo, OffsetNESW);
+        float4 hD = GetHeightSampleNESW(uv, uvo);
         float2 hSD = hD.xz;
         float2 hED = hD.yw;
-#endif
 
         float3 n0 = normalize(-normalize(float3(-hED, 1)) + float3(edgeNrm,0));
         float3 n1 = normalize( normalize(float3(-hSD, 1)) + float3(edgeNrm,0));
@@ -307,10 +276,8 @@ void GenerateEdgeCell(uint id)
         float3 t0 = -normalize(float3(1, 0, hED.x * .5f));
         float3 t1 =  normalize(float3(1, 0, hSD.x * .5f));
 
-        float2 height = hV; // * !bIsWall;
-
-        p0.z = (height.y - BASE_OFFSET) + OffsetBase.y;
-        p1.z = (height.x + BASE_OFFSET) + OffsetBase.x;
+        p0.z = hEV - BASE_OFFSET;
+        p1.z = hSV + BASE_OFFSET;
 
         // Pack tangents
 
@@ -320,7 +287,7 @@ void GenerateEdgeCell(uint id)
         uint un0 = PackNormalizedFloat4(float4(n0, 1));
         uint un1 = PackNormalizedFloat4(float4(n1, 1));
 
-        // Assign vertex
+        // Write vertex data
 
         Vertex v0 = { p0, uv, ut0, un0, color };
         Vertex v1 = { p1, uv, ut1, un1, color };
@@ -404,29 +371,42 @@ void GenerateEdgeCell(uint id)
         uint4 wi = wo + vertexOffset + vCount*2;
         uint2 vi = vo + vertexOffset + wallVertexOffset.x*2;
 
+        uint edgeCode = vertData[wvidx+wallVertexOffset.x];
+        uint edgeVIdx = (edgeCode >> 8) & 0x01;
+        uint edgeNrm  = PackNormalizedFloat4(float4(normalize(float3(edgeNormals[edgeVIdx], 0)), 1));
+
+        // Copy wall edge vertices
+
         Vertex v0 = OutVertexData[vi.x];
         Vertex v1 = OutVertexData[vi.y];
 
         v0.tangentX = wallTangent;
         v1.tangentX = wallTangent;
 
-        uint edgeCode = vertData[wvidx+wallVertexOffset.x];
-        uint edgeVIdx = (edgeCode >> 8) & 0x01;
-        uint edgeNrm  = PackNormalizedFloat4(float4(normalize(float3(edgeNormals[edgeVIdx], 0)), 1));
+        v0.uv = float2(0, 1);
+        v1.uv = float2(0, 1);
+
+        v0.color |= (0xFF << 24);
+        v1.color |= (0xFF << 24);
+
+        // Copy inner wall vertices
 
         Vertex v2 = v0;
         Vertex v3 = v1;
 
-#if 1
         v2.position.z *= 0.5f;
         v3.position.z *= 0.5f;
-#else
-        v2.position.z *= 1.0f;
-        v3.position.z *= 1.0f;
-#endif
+
+        v2.uv.y = 1.f/3.f;
+        v3.uv.y = 2.f/3.f;
+
+        v2.color |= (0xFF << 24);
+        v3.color |= (0xFF << 24);
 
         v2.tangentZ = edgeNrm;
         v3.tangentZ = edgeNrm;
+
+        // Write vertex data
 
         OutVertexData[wi.x] = v0;
         OutVertexData[wi.y] = v1;

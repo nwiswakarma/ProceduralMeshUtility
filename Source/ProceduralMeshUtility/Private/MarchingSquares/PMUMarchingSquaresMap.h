@@ -30,7 +30,6 @@
 #include "CoreMinimal.h"
 #include "Mesh/PMUMeshTypes.h"
 #include "RHI/PMURWBuffer.h"
-#include "PMUMarchingSquaresTypes.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMSq, Verbose, All);
 DECLARE_LOG_CATEGORY_EXTERN(UntMSq, Verbose, All);
@@ -102,22 +101,12 @@ public:
 	float BaseHeightOffset = 1.f;
 	float SurfaceHeightScale = 1.f;
 	float ExtrudeHeightScale = 1.f;
-	float BaseOffsetScale = 1.f;
-	float SurfaceOffsetScale = 1.f;
-	float ExtrudeOffsetScale = 1.f;
-    int32 SurfaceHeightTextureMipLevel = 0;
-    int32 ExtrudeHeightTextureMipLevel = 0;
-    int32 HeightOffsetTextureMipLevel = 0;
-    FVector2D HeightOffsetSampleOffset;
-    float HeightOffsetSampleScale = 1.f;
+    int32 HeightMapMipLevel = 0;
+
+    FTexture2DRHIParamRef HeightMap;
+    UTextureRenderTarget2D* DebugRTT;
 
     TArray<class UStaticMesh*> MeshPrefabs;
-
-    FTexture2DRHIParamRef SurfaceHeightTexture;
-    FTexture2DRHIParamRef ExtrudeHeightTexture;
-    FTexture2DRHIParamRef HeightOffsetTexture;
-
-    UTextureRenderTarget2D* DebugRTT;
 
     // Game thread accessors
 
@@ -156,7 +145,7 @@ public:
     // MAP GENERATION FUNCTIONS
 
     void SetDimension(FIntPoint InDimension);
-    void SetHeightTexture(FTexture2DRHIParamRef HeightTexture, TEnumAsByte<EPMUMarchingSquaresHeightTextureType::Type> HeightTextureType);
+    void SetHeightMap(FTexture2DRHIParamRef InHeightMap);
     void InitializeVoxelData();
     void BuildMap(int32 FillType, bool bGenerateWalls);
     void ClearMap();

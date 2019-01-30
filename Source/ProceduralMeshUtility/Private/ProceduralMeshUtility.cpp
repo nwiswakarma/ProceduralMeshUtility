@@ -249,8 +249,8 @@ private:
 #endif // PMU_VOXEL_USE_OCL
 };
 
-IMPLEMENT_MODULE(FProceduralMeshUtility, ProceduralMeshUtility)
 DEFINE_LOG_CATEGORY(LogPMU);
 DEFINE_LOG_CATEGORY(UntPMU);
+IMPLEMENT_MODULE(FProceduralMeshUtility, ProceduralMeshUtility)
 
 #undef LOCTEXT_NAMESPACE
