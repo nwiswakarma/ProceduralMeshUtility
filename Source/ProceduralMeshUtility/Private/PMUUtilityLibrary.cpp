@@ -782,6 +782,216 @@ void UPMUUtilityLibrary::AssignInstancesAlongPoly(int32 Seed, const TArray<FVect
     check(InstanceIds.Num() == Directions.Num());
 }
 
+void UPMUUtilityLibrary::AssignInstancesAlongPolyAlt(int32 Seed, const TArray<FVector>& Points, const TArray<FVector>& InstanceDimensions, float HeightOffsetMin, float HeightOffsetMax, TArray<int32>& InstanceIds, TArray<FVector>& Positions, TArray<FVector>& Directions)
+{
+    if (Points.Num() < 3)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityLibrary::AssignInstancesAlongPolyAlt() ABORTED, POINTS < 3"));
+        return;
+    }
+
+    if (InstanceDimensions.Num() < 1)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityLibrary::AssignInstancesAlongPolyAlt() ABORTED, EMPTY INSTANCE DIMENSIONS"));
+        return;
+    }
+
+    struct FInstanceGeom
+    {
+        int32 Index;
+        FVector Dimension;
+    };
+
+    TArray<FInstanceGeom> Instances;
+
+    for (int32 i=0; i<InstanceDimensions.Num(); ++i)
+    {
+        FVector Dimension = InstanceDimensions[i];
+
+        if (Dimension.X < KINDA_SMALL_NUMBER ||
+            Dimension.Y < KINDA_SMALL_NUMBER ||
+            Dimension.Z < KINDA_SMALL_NUMBER
+            )
+        {
+            continue;
+        }
+
+        FInstanceGeom Instance({ i, Dimension });
+        Instances.Emplace(Instance);
+    }
+
+    if (Instances.Num() < 1)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityLibrary::AssignInstancesAlongPolyAlt() ABORTED, NO VALID INSTANCE DIMENSION SPECIFIED"));
+        return;
+    }
+
+    // Sort instances
+
+    Instances.Sort(
+        [&](const auto& A, const auto& B)
+        {
+            return A.Dimension.X < B.Dimension.X;
+        } );
+
+    FRandomStream Rand(Seed);
+    const int32 InstanceCount = Instances.Num();
+    const int32 PointCount = Points.Num();
+    float DistAlongLine = 0.f;
+
+    float ZOffsetMin = FMath::Min(HeightOffsetMin, HeightOffsetMax);
+    float ZOffsetMax = FMath::Max(HeightOffsetMin, HeightOffsetMax);
+    bool bUseRandomZOffset = ! FMath::IsNearlyEqual(ZOffsetMin, ZOffsetMax);
+
+    for (int32 PointIndex=0; PointIndex<PointCount; ++PointIndex)
+    {
+        const int32 i0 = PointIndex;
+        const int32 i1 = (PointIndex+1) % PointCount;
+
+        const FVector& P0(Points[i0]);
+        const FVector& P1(Points[i1]);
+
+        const FVector PD = P1-P0;
+        const FVector PT = PD.GetSafeNormal2D();
+        const float LineDist = PD.Size();
+
+        if (LineDist < KINDA_SMALL_NUMBER)
+        {
+            continue;
+        }
+
+        while (DistAlongLine < LineDist)
+        {
+            FVector PAlongLine = P0 + PD * (DistAlongLine / LineDist);
+
+            if (bUseRandomZOffset)
+            {
+                PAlongLine.Z = Rand.FRandRange(ZOffsetMin, ZOffsetMax);
+            }
+            else
+            {
+                PAlongLine.Z = ZOffsetMin;
+            }
+
+            int32 InstanceIdx = 0;
+
+            for (int32 i=1; i<InstanceCount; ++i)
+            {
+                float l = Instances[i].Dimension.X;
+                float t = l + DistAlongLine;
+
+                if (t > LineDist)
+                {
+                    break;
+                }
+
+                InstanceIdx = i;
+            }
+
+            float InstanceLength = Instances[InstanceIdx].Dimension.X;
+
+            // Assign new instance
+
+            InstanceIds.Emplace(Instances[InstanceIdx].Index);
+            Positions.Emplace(PAlongLine);
+            Directions.Emplace(PT);
+
+            DistAlongLine += InstanceLength;
+        }
+
+        // Last instance properties
+
+        int32 LastId = InstanceIds.Last();
+        const FVector& LastDimension(InstanceDimensions[LastId]);
+        float LastExtentX = LastDimension.X * 0.5;
+        float LastExtentY = LastDimension.Y * 0.5;
+
+        const FVector& LastPosition(Positions.Last());
+        const FVector& LastDirection(Directions.Last());
+
+        const FVector LP0 = LastPosition;
+        const FVector LP1 = LP0 + LastDirection * LastDimension.X;
+        const FVector LExtent = FVector(-PT.Y, PT.X, 0.f) * LastExtentY;
+
+        // Last instance segment points:
+        //
+        // B--P1--C
+        // |      |
+        // |  ^^  |
+        // |  ||  |
+        // |  ||  |
+        // |  ||  |
+        // |  ||  |
+        // |      |
+        // A--P0--D
+
+        const FVector SPA = LP0 - LExtent;
+        const FVector SPB = LP1 - LExtent;
+        const FVector SPC = LP1 + LExtent;
+        const FVector SPD = LP0 + LExtent;
+
+        // Intersect last instance boundary points with next point lines
+        // to find the next distance along lines
+
+        int32 pni0 = i1;
+        int32 pni1;
+        float InstanceIntersectDist = -1.0;
+
+        for (; pni0<PointCount; ++pni0)
+        {
+            pni1 = (pni0+1) % PointCount;
+
+            const FVector& PNext0(Points[pni0]);
+            const FVector& PNext1(Points[pni1]);
+            bool bHasIntersection = false;
+            FVector Intersection;
+
+            // Intersect Segment BC
+            if (FMath::SegmentIntersection2D(SPB, SPC, PNext0, PNext1, Intersection))
+            {
+                bHasIntersection = true;
+            }
+            // Intersect Segment AB
+            else
+            if (FMath::SegmentIntersection2D(SPA, SPB, PNext0, PNext1, Intersection))
+            {
+                bHasIntersection = true;
+            }
+            // Intersect Segment DC
+            else
+            if (FMath::SegmentIntersection2D(SPD, SPC, PNext0, PNext1, Intersection))
+            {
+                bHasIntersection = true;
+            }
+            // Intersect Segment AD
+            else
+            if (FMath::SegmentIntersection2D(SPA, SPD, PNext0, PNext1, Intersection))
+            {
+                bHasIntersection = true;
+            }
+
+            // Intersection found, break loop
+            if (bHasIntersection)
+            {
+                InstanceIntersectDist = (Intersection-PNext0).Size();
+                break;
+            }
+        }
+
+        PointIndex = pni0-1;
+        DistAlongLine = FMath::Max(0.f, InstanceIntersectDist);
+
+        // Prevents cyclic loop
+        if (PointIndex < i0)
+        {
+            break;
+        }
+    }
+
+    check(InstanceIds.Num() == Positions.Num());
+    check(InstanceIds.Num() == Directions.Num());
+}
+
 UObject* UPMUUtilityLibrary::CreateSubstanceImageInputFromTexture2D(UObject* WorldContextObject, UTexture2D* SrcTexture, int32 MipLevel, FString InstanceName)
 {
 #ifdef PMU_SUBSTANCE_ENABLED

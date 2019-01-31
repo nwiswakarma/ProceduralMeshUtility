@@ -165,6 +165,9 @@ public:
     UFUNCTION(BlueprintCallable)
     static void AssignInstancesAlongPoly(int32 Seed, const TArray<FVector>& Points, const TArray<FVector>& InstanceDimensions, float HeightOffsetMin, float HeightOffsetMax, TArray<int32>& InstanceIds, TArray<FVector>& Positions, TArray<FVector>& Directions);
 
+    UFUNCTION(BlueprintCallable)
+    static void AssignInstancesAlongPolyAlt(int32 Seed, const TArray<FVector>& Points, const TArray<FVector>& InstanceDimensions, float HeightOffsetMin, float HeightOffsetMax, TArray<int32>& InstanceIds, TArray<FVector>& Positions, TArray<FVector>& Directions);
+
     // SUBSTANCE UTILITY
 
     UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", UnsafeDuringActorConstruction="true"))
