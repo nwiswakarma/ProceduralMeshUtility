@@ -296,6 +296,38 @@ class FPMUHeightMapErosion_TransferThermalWeatheringCS : public FPMUBaseComputeS
         )
 };
 
+class FPMUHeightMapErosion_WriteFlowMapMagnitudeCS : public FPMUBaseComputeShader<16,16,1>
+{
+    typedef FPMUBaseComputeShader<16,16,1> FBaseType;
+
+    PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(
+        FPMUHeightMapErosion_WriteFlowMapMagnitudeCS,
+        Global,
+        RHISupportsComputeShaders(Parameters.Platform)
+        )
+
+    PMU_DECLARE_SHADER_PARAMETERS_1(
+        SRV,
+        FShaderResourceParameter,
+        FResourceId,
+        "FlowMap", FlowMap
+        )
+
+    PMU_DECLARE_SHADER_PARAMETERS_1(
+        UAV,
+        FShaderResourceParameter,
+        FResourceId,
+        "OutFlowMagMap", OutFlowMagMap
+        )
+
+    PMU_DECLARE_SHADER_PARAMETERS_1(
+        Value,
+        FShaderParameter,
+        FParameterId,
+        "_Dim", Params_Dim
+        )
+};
+
 class FPMUHeightMapErosion_ScanDeltaTGroupCS : public FPMUBaseComputeShader<128,1,1>
 {
     typedef FPMUBaseComputeShader<128,1,1> FBaseType;
@@ -364,12 +396,16 @@ IMPLEMENT_SHADER_TYPE(, FPMUHeightMapErosion_SimulateErosionCS, TEXT("/Plugin/Pr
 IMPLEMENT_SHADER_TYPE(, FPMUHeightMapErosion_TransportSedimentCS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUHeightMapErosionCS.usf"), TEXT("TransportSediment"), SF_Compute);
 IMPLEMENT_SHADER_TYPE(, FPMUHeightMapErosion_ComputeThermalWeatheringCS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUHeightMapErosionCS.usf"), TEXT("ComputeThermalWeathering"), SF_Compute);
 IMPLEMENT_SHADER_TYPE(, FPMUHeightMapErosion_TransferThermalWeatheringCS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUHeightMapErosionCS.usf"), TEXT("TransferThermalWeathering"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(, FPMUHeightMapErosion_WriteFlowMapMagnitudeCS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUHeightMapErosionCS.usf"), TEXT("WriteFlowMapMagnitude"), SF_Compute);
+
 IMPLEMENT_SHADER_TYPE(, FPMUHeightMapErosion_ScanDeltaTGroupCS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUHeightMapErosionCS.usf"), TEXT("ScanDeltaTGroup"), SF_Compute);
 IMPLEMENT_SHADER_TYPE(, FPMUHeightMapErosion_ScanDeltaTTopLevelCS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUHeightMapErosionCS.usf"), TEXT("ScanDeltaTTopLevel"), SF_Compute);
 
 void UPMUHeightMapErosionShader::ApplyErosionShader(
     UObject* WorldContextObject,
-    UTextureRenderTarget2D* RenderTarget,
+    FPMUShaderTextureParameterInput SourceTexture,
+    UTextureRenderTarget2D* HeightMapRTT,
+    UTextureRenderTarget2D* FlowMapRTT,
     // Erosion Configuration
     int32 MaxIteration,
     float MaxDuration,
@@ -390,7 +426,9 @@ void UPMUHeightMapErosionShader::ApplyErosionShader(
     )
 {
 	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
-    FTextureRenderTarget2DResource* TextureResource = nullptr;
+    FPMUShaderTextureParameterInputResource SourceTextureResource(SourceTexture.GetResource_GT());
+    FTextureRenderTarget2DResource* HeightMapRTTResource = nullptr;
+    FTextureRenderTarget2DResource* FlowMapRTTResource = nullptr;
 
     if (! IsValid(World))
     {
@@ -404,24 +442,49 @@ void UPMUHeightMapErosionShader::ApplyErosionShader(
         return;
     }
 
-    if (! IsValid(RenderTarget))
+    if (! SourceTextureResource.HasValidResource())
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUHeightMapErosionShader::ApplyErosionShader() ABORTED, INVALID SOURCE TEXTURE"));
+        return;
+    }
+
+    if (! IsValid(HeightMapRTT))
     {
         UE_LOG(LogPMU,Warning, TEXT("UPMUHeightMapErosionShader::ApplyErosionShader() ABORTED, INVALID RENDER TARGET"));
         return;
     }
 
-    TextureResource = static_cast<FTextureRenderTarget2DResource*>(RenderTarget->GameThread_GetRenderTargetResource());
+    HeightMapRTTResource = static_cast<FTextureRenderTarget2DResource*>(HeightMapRTT->GameThread_GetRenderTargetResource());
 
-    if (! TextureResource)
+    if (! HeightMapRTTResource)
     {
         UE_LOG(LogPMU,Warning, TEXT("UPMUHeightMapErosionShader::ApplyErosionShader() ABORTED, INVALID RENDER TARGET TEXTURE RESOURCE"));
         return;
     }
 
+    if (IsValid(FlowMapRTT))
+    {
+        FlowMapRTTResource = static_cast<FTextureRenderTarget2DResource*>(FlowMapRTT->GameThread_GetRenderTargetResource());
+
+        if (! FlowMapRTTResource)
+        {
+            UE_LOG(LogPMU,Warning, TEXT("UPMUHeightMapErosionShader::ApplyErosionShader() ABORTED, SUPPLIED FLOW MAP HAS INVALID RENDER TARGET TEXTURE RESOURCE"));
+            return;
+        }
+
+        if (FlowMapRTT->SizeX != HeightMapRTT->SizeX || FlowMapRTT->SizeY != HeightMapRTT->SizeY)
+        {
+            UE_LOG(LogPMU,Warning, TEXT("UPMUHeightMapErosionShader::ApplyErosionShader() ABORTED, INVALID FLOW MAP RENDER TARGET DIMENSION"));
+            return;
+        }
+    }
+
     struct FRenderParameter
     {
         ERHIFeatureLevel::Type FeatureLevel;
-        FTextureRenderTarget2DResource* TextureResource;
+        FPMUShaderTextureParameterInputResource SourceTextureResource;
+        FTextureRenderTarget2DResource* HeightMapRTTResource;
+        FTextureRenderTarget2DResource* FlowMapRTTResource;
         FIntPoint Dimension;
         int32 MaxIteration;
         float MaxDuration;
@@ -434,8 +497,10 @@ void UPMUHeightMapErosionShader::ApplyErosionShader(
 
     FRenderParameter RenderParameter = {
         World->Scene->GetFeatureLevel(),
-        TextureResource,
-        { RenderTarget->SizeX, RenderTarget->SizeY },
+        SourceTextureResource,
+        HeightMapRTTResource,
+        FlowMapRTTResource,
+        { HeightMapRTT->SizeX, HeightMapRTT->SizeY },
         MaxIteration,
         MaxDuration,
         WaterAmount,
@@ -462,7 +527,9 @@ void UPMUHeightMapErosionShader::ApplyErosionShader(
             UPMUHeightMapErosionShader::ApplyErosionShader_RT(
                 RHICmdList,
                 RenderParameter.FeatureLevel,
-                RenderParameter.TextureResource,
+                RenderParameter.SourceTextureResource,
+                RenderParameter.HeightMapRTTResource,
+                RenderParameter.FlowMapRTTResource,
                 RenderParameter.Dimension,
                 RenderParameter.MaxIteration,
                 RenderParameter.MaxDuration,
@@ -478,7 +545,9 @@ void UPMUHeightMapErosionShader::ApplyErosionShader(
 void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
     FRHICommandListImmediate& RHICmdList,
     ERHIFeatureLevel::Type FeatureLevel,
-    FTextureRenderTarget2DResource* TextureResource,
+    FPMUShaderTextureParameterInputResource& SourceTextureInput,
+    FTextureRenderTarget2DResource* HeightMapRTT,
+    FTextureRenderTarget2DResource* FlowMapRTT,
     FIntPoint Dimension,
     int32 MaxIteration,
     float MaxDuration,
@@ -501,8 +570,9 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
     check(IsInRenderingThread());
 
     TShaderMap<FGlobalShaderType>* RHIShaderMap = GetGlobalShaderMap(FeatureLevel);
+    FTexture2DRHIParamRef SrcHeightMap = SourceTextureInput.GetTextureParamRef_RT();
 
-    if (! TextureResource || ! TextureResource->GetTextureRHI())
+    if (! SrcHeightMap || ! HeightMapRTT || ! HeightMapRTT->GetTextureRHI())
     {
         return;
     }
@@ -536,9 +606,9 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
 	FPMURWBuffer DeltaTScanData;
 	FPMURWBuffer DeltaTData;
 
-	FTexture2DRHIRef DstHeightMap;
-	FUnorderedAccessViewRHIRef DstHeightMapUAV;
-	FShaderResourceViewRHIRef DstHeightMapSRV;
+	FTexture2DRHIRef ErosionHeightMap;
+	FUnorderedAccessViewRHIRef ErosionHeightMapUAV;
+	FShaderResourceViewRHIRef ErosionHeightMapSRV;
 
 	FPMURWBuffer ThermalTransferMapAA;
 	FPMURWBuffer ThermalTransferMapAX;
@@ -546,10 +616,6 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
 	FTexture2DRHIRef ThermalSwapHeightMap;
 	FUnorderedAccessViewRHIRef ThermalSwapHeightMapUAV;
 	FShaderResourceViewRHIRef ThermalSwapHeightMapSRV;
-
-    // Height map RTT RHI texture
-
-	FTexture2DRHIParamRef SrcHeightMap = TextureResource->GetTextureRHI();
 
     // Calculate block sizes for delta T calculation
 
@@ -652,9 +718,9 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
         EPixelFormat PixelFormat = SrcHeightMap->GetFormat();
         uint32 TextureFlags = TexCreate_ShaderResource | TexCreate_UAV | TexCreate_ResolveTargetable;
 
-        DstHeightMap = RHICmdList.CreateTexture2D(Dimension.X, Dimension.Y, PixelFormat, 1, 1, TextureFlags, CreateInfo);
-        DstHeightMapUAV = RHICmdList.CreateUnorderedAccessView(DstHeightMap, 0);
-        DstHeightMapSRV = RHICmdList.CreateShaderResourceView(DstHeightMap, 0);
+        ErosionHeightMap = RHICmdList.CreateTexture2D(Dimension.X, Dimension.Y, PixelFormat, 1, 1, TextureFlags, CreateInfo);
+        ErosionHeightMapUAV = RHICmdList.CreateUnorderedAccessView(ErosionHeightMap, 0);
+        ErosionHeightMapSRV = RHICmdList.CreateShaderResourceView(ErosionHeightMap, 0);
 
         if (bThermalWeatheringEnabled)
         {
@@ -682,11 +748,11 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
 
     SetRenderTarget(RHICmdList, FTextureRHIParamRef(), FTextureRHIParamRef());
 
-    // Copy source texture
+    // Copy source texture to erosion height map
 
     RHICmdList.CopyToResolveTarget(
         SrcHeightMap,
-        DstHeightMap,
+        ErosionHeightMap,
         FResolveParams()
         );
 
@@ -714,7 +780,7 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
             ComputeShader->SetShader(RHICmdList);
             ComputeShader->BindSRV(RHICmdList, TEXT("DeltaTData"), DeltaTData.SRV);
             ComputeShader->BindSRV(RHICmdList, TEXT("WaterMap"), WaterMap.SRV);
-            ComputeShader->BindSRV(RHICmdList, TEXT("HeightMap"), DstHeightMapSRV);
+            ComputeShader->BindSRV(RHICmdList, TEXT("HeightMap"), ErosionHeightMapSRV);
             ComputeShader->BindUAV(RHICmdList, TEXT("OutFluxMap"), FluxMap.UAV);
             ComputeShader->SetParameter(RHICmdList, TEXT("_Dim"), Dimension);
             ComputeShader->SetParameter(RHICmdList, TEXT("_DeltaTId"), DeltaTId);
@@ -747,7 +813,7 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
             ComputeShader->BindSRV(RHICmdList, TEXT("FlowMap"), FlowMap.SRV);
             ComputeShader->BindUAV(RHICmdList, TEXT("OutWaterMap"), WaterMap.UAV);
             ComputeShader->BindUAV(RHICmdList, TEXT("OutSedimentTransferMap"), SedimentTransferMap.UAV);
-            ComputeShader->BindUAV(RHICmdList, TEXT("OutHeightMap"), DstHeightMapUAV);
+            ComputeShader->BindUAV(RHICmdList, TEXT("OutHeightMap"), ErosionHeightMapUAV);
             ComputeShader->SetParameter(RHICmdList, TEXT("_Dim"), Dimension);
             ComputeShader->SetParameter(RHICmdList, TEXT("_DeltaTId"), DeltaTId);
             ComputeShader->SetParameter(RHICmdList, TEXT("_ErosionConstants"), ErosionConstants);
@@ -783,7 +849,7 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
                 TShaderMapRef<FPMUHeightMapErosion_ComputeThermalWeatheringCS> ComputeShader(RHIShaderMap);
                 ComputeShader->SetShader(RHICmdList);
                 ComputeShader->BindSRV(RHICmdList, TEXT("DeltaTData"), DeltaTData.SRV);
-                ComputeShader->BindSRV(RHICmdList, TEXT("HeightMap"), DstHeightMapSRV);
+                ComputeShader->BindSRV(RHICmdList, TEXT("HeightMap"), ErosionHeightMapSRV);
                 ComputeShader->BindUAV(RHICmdList, TEXT("OutHeightMap"), ThermalSwapHeightMapUAV);
                 ComputeShader->BindUAV(RHICmdList, TEXT("OutThermalTransferMapAA"), ThermalTransferMapAA.UAV);
                 ComputeShader->BindUAV(RHICmdList, TEXT("OutThermalTransferMapAX"), ThermalTransferMapAX.UAV);
@@ -800,7 +866,7 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
                 ComputeShader->BindSRV(RHICmdList, TEXT("HeightMap"), ThermalSwapHeightMapSRV);
                 ComputeShader->BindSRV(RHICmdList, TEXT("ThermalTransferMapAA"), ThermalTransferMapAA.SRV);
                 ComputeShader->BindSRV(RHICmdList, TEXT("ThermalTransferMapAX"), ThermalTransferMapAX.SRV);
-                ComputeShader->BindUAV(RHICmdList, TEXT("OutHeightMap"), DstHeightMapUAV);
+                ComputeShader->BindUAV(RHICmdList, TEXT("OutHeightMap"), ErosionHeightMapUAV);
                 ComputeShader->SetParameter(RHICmdList, TEXT("_Dim"), Dimension);
                 ComputeShader->SetParameter(RHICmdList, TEXT("_DeltaTId"), DeltaTId);
                 ComputeShader->DispatchAndClear(RHICmdList, Dimension.X, Dimension.Y, 1);
@@ -832,7 +898,7 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
 
         //{
         //    uint32 Stride;
-        //    const float* Height = reinterpret_cast<float*>(RHILockTexture2D(DstHeightMap, 0, RLM_ReadOnly, Stride, false));
+        //    const float* Height = reinterpret_cast<float*>(RHILockTexture2D(ErosionHeightMap, 0, RLM_ReadOnly, Stride, false));
         //    const float* Water = reinterpret_cast<float*>(RHILockVertexBuffer(WaterMap.Buffer, 0, WaterMap.Buffer->GetSize(), RLM_ReadOnly));
         //    const float* Sediment = reinterpret_cast<float*>(RHILockVertexBuffer(SedimentMap.Buffer, 0, SedimentMap.Buffer->GetSize(), RLM_ReadOnly));
 
@@ -843,7 +909,7 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
 
         //    RHIUnlockVertexBuffer(SedimentMap.Buffer);
         //    RHIUnlockVertexBuffer(WaterMap.Buffer);
-        //    RHIUnlockTexture2D(DstHeightMap, 0, false);
+        //    RHIUnlockTexture2D(ErosionHeightMap, 0, false);
         //}
 
         //{
@@ -873,11 +939,45 @@ void UPMUHeightMapErosionShader::ApplyErosionShader_RT(
         //}
     }
 
-    // Copy result texture to RTT
+    // Copy erosion height map to RTT
 
     RHICmdList.CopyToResolveTarget(
-        DstHeightMap,
-        SrcHeightMap,
+        ErosionHeightMap,
+        HeightMapRTT->GetTextureRHI(),
         FResolveParams()
         );
+
+    // Copy flow map if a valid flow map RTT is supplied
+
+    if (FlowMapRTT)
+    {
+        FTexture2DRHIParamRef FlowMapRTTTex = FlowMapRTT->GetTextureRHI();
+
+        FTexture2DRHIRef FlowMapTex;
+        FUnorderedAccessViewRHIRef FlowMapTexUAV;
+        FShaderResourceViewRHIRef FlowMapTexSRV;
+
+        FRHIResourceCreateInfo CreateInfo;
+        EPixelFormat PixelFormat = FlowMapRTTTex->GetFormat();
+        uint32 TextureFlags = TexCreate_UAV;
+
+        FlowMapTex = RHICmdList.CreateTexture2D(Dimension.X, Dimension.Y, PixelFormat, 1, 1, TextureFlags, CreateInfo);
+        FlowMapTexUAV = RHICmdList.CreateUnorderedAccessView(FlowMapTex, 0);
+        FlowMapTexSRV = RHICmdList.CreateShaderResourceView(FlowMapTex, 0);
+
+        {
+            TShaderMapRef<FPMUHeightMapErosion_WriteFlowMapMagnitudeCS> ComputeShader(RHIShaderMap);
+            ComputeShader->SetShader(RHICmdList);
+            ComputeShader->BindSRV(RHICmdList, TEXT("FlowMap"), FlowMap.SRV);
+            ComputeShader->BindUAV(RHICmdList, TEXT("OutFlowMagMap"), FlowMapTexUAV);
+            ComputeShader->SetParameter(RHICmdList, TEXT("_Dim"), Dimension);
+            ComputeShader->DispatchAndClear(RHICmdList, Dimension.X, Dimension.Y, 1);
+        }
+
+        RHICmdList.CopyToResolveTarget(
+            FlowMapTex,
+            FlowMapRTTTex,
+            FResolveParams()
+            );
+    }
 }

@@ -43,7 +43,9 @@ public:
     UFUNCTION(BlueprintCallable, meta=(WorldContext="WorldContextObject", UnsafeDuringActorConstruction="true"))
     static void ApplyErosionShader(
         UObject* WorldContextObject,
-        UTextureRenderTarget2D* RenderTarget,
+        FPMUShaderTextureParameterInput SourceTexture,
+        UTextureRenderTarget2D* HeightMapRTT,
+        UTextureRenderTarget2D* FlowMapRTT,
         // Erosion Configuration
         int32 MaxIteration = 15,
         float MaxDuration = 1.f,
@@ -66,7 +68,9 @@ public:
     static void ApplyErosionShader_RT(
         FRHICommandListImmediate& RHICmdList,
         ERHIFeatureLevel::Type FeatureLevel,
-        FTextureRenderTarget2DResource* TextureResource,
+        FPMUShaderTextureParameterInputResource& SourceTextureInput,
+        FTextureRenderTarget2DResource* HeightMapRTT,
+        FTextureRenderTarget2DResource* FlowMapRTT,
         FIntPoint Dimension,
         int32 MaxIteration,
         float MaxDuration,

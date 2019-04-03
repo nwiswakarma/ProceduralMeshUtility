@@ -23,35 +23,54 @@
 // THE SOFTWARE.
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
+// 
 
-/*------------------------------------------------------------------------------
-	Compile time parameters:
-		THREAD_SIZE_X - The number of threads (x) to launch per workgroup
-		THREAD_SIZE_Y - The number of threads (y) to launch per workgroup
-------------------------------------------------------------------------------*/
+#pragma once
 
-Texture2D    SrcTexture;
-SamplerState samplerSrcTexture;
+#include "CoreMinimal.h"
+#include "PMUShaderGeometry.generated.h"
 
-StructuredBuffer<float2>   PointData;
-RWStructuredBuffer<float4> OutValueData;
-
-float2 _Dim;
-uint   _PointCount;
-
-[numthreads(256,1,1)]
-void MainCS(uint3 id : SV_DispatchThreadID)
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUShaderQuadGeometry
 {
-    const uint tid = id.x;
+    GENERATED_BODY()
 
-    if (tid >= _PointCount)
-    {
-        return;
-    }
+    UPROPERTY(BlueprintReadWrite)
+    FVector2D Origin;
 
-    float2 uvu = 1.f / _Dim;
-    float2 uv0  = PointData[tid] * uvu;
-    //OutValueData[tid] = SrcTexture.SampleLevel(samplerSrcTexture, uv0-(uvu*.5f), 0);
-    OutValueData[tid] = SrcTexture.SampleLevel(samplerSrcTexture, uv0, 0);
-}
+    UPROPERTY(BlueprintReadWrite)
+    FVector2D Size = FVector2D::UnitVector;
+
+    UPROPERTY(BlueprintReadWrite)
+    float Scale = 1.f;
+
+    UPROPERTY(BlueprintReadWrite)
+    float AngleRadian = 0.f;
+
+    UPROPERTY(BlueprintReadWrite)
+    float Luminosity = 1.f;
+};
+
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUShaderPolyGeometry
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    FVector2D Origin;
+
+    UPROPERTY(BlueprintReadWrite)
+    FVector2D Size = FVector2D::UnitVector;
+
+    UPROPERTY(BlueprintReadWrite)
+    int32 Sides = 3;
+
+    UPROPERTY(BlueprintReadWrite)
+    float Scale = 1.f;
+
+    UPROPERTY(BlueprintReadWrite)
+    float AngleRadian = 0.f;
+
+    UPROPERTY(BlueprintReadWrite)
+    float Luminosity = 1.f;
+};

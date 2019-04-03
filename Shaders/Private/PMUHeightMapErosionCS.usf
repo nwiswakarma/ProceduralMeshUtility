@@ -86,6 +86,7 @@ RWBuffer<float4> OutThermalTransferMapAX;
 RWStructuredBuffer<float4> OutFluxMap;
 RWStructuredBuffer<float2> OutFlowMap;
 RWTexture2D<float> OutHeightMap;
+RWTexture2D<float> OutFlowMagMap;
 
 groupshared float DeltaTScanLocal[GROUPSHARED_SIZE];
 
@@ -428,6 +429,12 @@ void TransferThermalWeathering(uint3 tid : SV_DispatchThreadID)
     tv += tvs[1][2];
     tv += tvs[1][3];
     OutHeightMap[xy] = tv;
+}
+
+[numthreads(THREAD_SIZE_X,THREAD_SIZE_Y,1)]
+void WriteFlowMapMagnitude(uint3 tid : SV_DispatchThreadID)
+{
+    OutFlowMagMap[tid.xy] = length(FlowMap[IDX(tid)]) / 100.0;
 }
 
 [numthreads(WG_SIZE,1,1)]

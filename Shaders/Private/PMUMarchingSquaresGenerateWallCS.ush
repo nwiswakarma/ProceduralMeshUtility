@@ -70,7 +70,7 @@ void GenerateFillCell(uint id)
     float4 uvo = { uv1, 0, 0 };
 
     float2 xy = lid;
-    float2 uv = xy*uv1;
+    float2 uv = xy*uv1 - uvo*.5f;
 
     float3 p0 = CreatePos3(xy, CDim*BDim);
     float3 p1 = p0;
@@ -255,7 +255,7 @@ void GenerateEdgeCell(uint id)
         float2 edgeNrm = edgeNormals[edgeValueIdx] * bIsWall;
 
         float2 xy = lid+edgePos;
-        float2 uv = xy*uv1;
+        float2 uv = xy*uv1 - uvo*.5f;
 
         float3 p0 = CreatePos3(xy, CDim*BDim);
         float3 p1 = p0;

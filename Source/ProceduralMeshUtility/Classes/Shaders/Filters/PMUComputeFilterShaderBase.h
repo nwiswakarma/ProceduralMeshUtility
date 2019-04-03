@@ -23,35 +23,55 @@
 // THE SOFTWARE.
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
+// 
 
-/*------------------------------------------------------------------------------
-	Compile time parameters:
-		THREAD_SIZE_X - The number of threads (x) to launch per workgroup
-		THREAD_SIZE_Y - The number of threads (y) to launch per workgroup
-------------------------------------------------------------------------------*/
+#pragma once
 
-Texture2D    SrcTexture;
-SamplerState samplerSrcTexture;
+#include "CoreMinimal.h"
+#include "PMUComputeFilterShaderBase.generated.h"
 
-StructuredBuffer<float2>   PointData;
-RWStructuredBuffer<float4> OutValueData;
-
-float2 _Dim;
-uint   _PointCount;
-
-[numthreads(256,1,1)]
-void MainCS(uint3 id : SV_DispatchThreadID)
+class FPMUComputeFilterRenderThreadWorkerBase
 {
-    const uint tid = id.x;
+public:
 
-    if (tid >= _PointCount)
+    int32 RepeatCount;
+
+    FPMUComputeFilterRenderThreadWorkerBase()
     {
-        return;
     }
 
-    float2 uvu = 1.f / _Dim;
-    float2 uv0  = PointData[tid] * uvu;
-    //OutValueData[tid] = SrcTexture.SampleLevel(samplerSrcTexture, uv0-(uvu*.5f), 0);
-    OutValueData[tid] = SrcTexture.SampleLevel(samplerSrcTexture, uv0, 0);
-}
+    virtual ~FPMUComputeFilterRenderThreadWorkerBase()
+    {
+    }
+
+    virtual bool IsMultiPass() const
+    {
+        return false;
+    }
+
+    virtual int32 GetRepeatCount() const
+    {
+        return RepeatCount;
+    }
+
+    virtual FComputeShaderRHIParamRef GetComputeShader(ERHIFeatureLevel::Type FeatureLevel) = 0;
+    virtual void BindSwapTexture(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FTextureRHIParamRef SwapTexture) = 0;
+    virtual void BindComputeShaderParameters(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel) = 0;
+    virtual void UnbindComputeShaderParameters(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel) = 0;
+};
+
+UCLASS(BlueprintType, Blueprintable)
+class PROCEDURALMESHUTILITY_API UPMUComputeFilterShaderBase : public UObject
+{
+	GENERATED_BODY()
+
+public:
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 RepeatCount = 1;
+
+    virtual TSharedPtr<FPMUComputeFilterRenderThreadWorkerBase> GetRenderThreadWorker()
+    {
+        return nullptr;
+    }
+};

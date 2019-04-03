@@ -34,6 +34,29 @@
 #include "PMUShaderParameters.generated.h"
 
 UENUM(BlueprintType)
+enum class EPMUShaderDrawBlendType : uint8
+{
+	DB_Opaque = 0,
+	DB_Max    = 1,
+	DB_Min    = 2,
+	DB_Add    = 3,
+	DB_Sub    = 4,
+	DB_SubRev = 5
+};
+
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUShaderDrawConfig
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    EPMUShaderDrawBlendType BlendType = EPMUShaderDrawBlendType::DB_Opaque;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bClearRenderTarget = false;
+};
+
+UENUM(BlueprintType)
 enum class EPMUShaderTextureType : uint8
 {
     PMU_STT_Texture2D,

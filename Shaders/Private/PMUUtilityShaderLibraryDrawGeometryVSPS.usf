@@ -27,14 +27,16 @@
 
 #include "/Engine/Private/Common.ush"
 
+Buffer<float4> QuadGeomData;
+Buffer<float4> QuadTransformData;
+
 void DrawScreenVS(
-	in float2 InPosition : ATTRIBUTE0,
-	in float2 InUV       : ATTRIBUTE1,
+    in float4 InPosUV : ATTRIBUTE0,
 	out FScreenVertexOutput Output
 	)
 {
-	Output.Position = float4(InPosition * float2(1, -1), 0, 1);
-    Output.UV = InUV;
+	Output.Position = float4(InPosUV.xy * float2(1, -1), 0, 1);
+    Output.UV = InPosUV.zw;
 }
 
 void DrawGeometryVS(
@@ -53,4 +55,38 @@ void DrawGeometryPS(
 	)
 {
     OutColor = Coord;
+}
+
+void DrawQuadVS(
+    in float4 InPosUV  : ATTRIBUTE0,
+	in uint InstanceId : SV_InstanceID,
+	out noperspective MaterialFloat4 OutColor : COLOR0,
+	out FScreenVertexOutput Output
+	)
+{
+    const float4 QuadGeom = QuadGeomData[InstanceId];
+    const float4 QuadTransform = QuadTransformData[InstanceId];
+
+    float2   rot = { cos(QuadTransform.y), sin(QuadTransform.y) };
+    float2x2 mat = {
+        rot.x, -rot.y,
+        rot.y,  rot.x
+        };
+
+    float2 pos = QuadGeom.xy + mul(InPosUV.xy * QuadGeom.zw * QuadTransform.x, mat);
+
+	Output.Position = float4(pos * float2(1, -1), 0, 1);
+    Output.UV = InPosUV.zw;
+    OutColor = QuadTransform.z;
+}
+
+void DrawPolyVS(
+    in float4 InPosLumMask : ATTRIBUTE0,
+	out noperspective MaterialFloat4 OutColor : COLOR0,
+	out FScreenVertexOutput Output
+	)
+{
+	Output.Position = float4(InPosLumMask.xy * float2(1, -1), 0, 1);
+    Output.UV = InPosLumMask.zw;
+    OutColor = InPosLumMask.z;
 }

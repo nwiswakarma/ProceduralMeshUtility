@@ -154,6 +154,9 @@ public:
     static void PolyClip(const TArray<FVector2D>& Points, TArray<int32>& OutIndices, bool bInversed = false);
 
     UFUNCTION(BlueprintCallable)
+    static void PolyClipGroups(const TArray<FPMUPoints>& PolyGroups, TArray<int32>& OutIndices, FPMUPoints& OutPoints, bool bCombinePoints = false, bool bInversed = false);
+
+    UFUNCTION(BlueprintCallable)
     static TArray<int32> MaskPoints(const TArray<FVector2D>& Points, const TArray<uint8>& Mask, const int32 SizeX, const int32 SizeY, const uint8 Threshold = 127);
 
     UFUNCTION(BlueprintCallable)

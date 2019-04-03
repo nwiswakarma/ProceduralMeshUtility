@@ -51,17 +51,16 @@ static TGlobalResource<FPMUFilterVertexBuffer> GPMUFilterVertexBuffer;
 
 void FPMUFilterVertexBuffer::InitRHI()
 {
-    // Create a static vertex buffer
-    FRHIResourceCreateInfo CreateInfo;
-    VertexBufferRHI = RHICreateVertexBuffer(sizeof(FScreenVertex) * 4, BUF_Static, CreateInfo);
-    void* DataPtr = RHILockVertexBuffer(VertexBufferRHI, 0, sizeof(FScreenVertex) * 4, RLM_WriteOnly);
-    // Generate the vertices used
-    FScreenVertex* Vertices = reinterpret_cast<FScreenVertex*>(DataPtr);
-	Vertices[0] = { { -1.0f,  1.0f }, { 0.f, 1.f } };
-	Vertices[1] = { {  1.0f,  1.0f }, { 1.f, 1.f } };
-	Vertices[2] = { { -1.0f, -1.0f }, { 0.f, 0.f } };
-	Vertices[3] = { {  1.0f, -1.0f }, { 1.f, 0.f } };
-    RHIUnlockVertexBuffer(VertexBufferRHI);
+    // Create vertex data
+    TResourceArray<FVector4, VERTEXBUFFER_ALIGNMENT> Vertices;
+    Vertices.SetNumUninitialized(4);
+    Vertices[0] = FVector4(-1.0f,  1.0f, 0.f, 1.f);
+    Vertices[1] = FVector4( 1.0f,  1.0f, 1.f, 1.f);
+    Vertices[2] = FVector4(-1.0f, -1.0f, 0.f, 0.f);
+    Vertices[3] = FVector4( 1.0f, -1.0f, 1.f, 0.f);
+    // Create a vertex buffer
+    FRHIResourceCreateInfo CreateInfo(&Vertices);
+    VertexBufferRHI = RHICreateVertexBuffer(Vertices.GetResourceDataSize(), BUF_Static, CreateInfo);
 }
 
 class FPMUUtilityShaderLibraryDrawScreenVS : public FPMUBaseVertexShader
@@ -75,6 +74,7 @@ class FPMUUtilityShaderLibraryDrawScreenVS : public FPMUBaseVertexShader
     PMU_DECLARE_SHADER_PARAMETERS_0(Value,,)
 };
 
+template<uint32 bEnableVertexColor>
 class FPMUUtilityShaderLibraryDrawScreenMaterialPS : public FPMUBasePixelMaterialShader
 {
 public:
@@ -94,6 +94,7 @@ public:
     {
         FMaterialShader::ModifyCompilationEnvironment(Platform, Material, OutEnvironment);
         OutEnvironment.SetDefine(TEXT("PMU_USE_SOURCE_MAP"), 1);
+        OutEnvironment.SetDefine(TEXT("PMU_ENABLE_VERTEX_COLOR"), (bEnableVertexColor>0) ? 1 : 0);
         OutEnvironment.SetDefine(TEXT("PMU_FILTER_HAS_VALID_MATERIAL_DOMAIN"), ShouldCompilePermutation(Platform, Material) ? 1 : 0);
     }
 
@@ -119,7 +120,8 @@ public:
 };
 
 IMPLEMENT_SHADER_TYPE(, FPMUUtilityShaderLibraryDrawScreenVS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawGeometryVSPS.usf"), TEXT("DrawScreenVS"), SF_Vertex);
-IMPLEMENT_MATERIAL_SHADER_TYPE(, FPMUUtilityShaderLibraryDrawScreenMaterialPS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawScreenMaterialPS.usf"), TEXT("MainPS"), SF_Pixel);
+IMPLEMENT_MATERIAL_SHADER_TYPE(template<>, FPMUUtilityShaderLibraryDrawScreenMaterialPS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawScreenMaterialPS.usf"), TEXT("MainPS"), SF_Pixel);
+IMPLEMENT_MATERIAL_SHADER_TYPE(template<>, FPMUUtilityShaderLibraryDrawScreenMaterialPS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawScreenMaterialPS.usf"), TEXT("MainPS"), SF_Pixel);
 
 
 class FPMUUtilityShaderLibraryDrawGeometryVS : public FPMUBaseVertexShader
@@ -146,6 +148,39 @@ class FPMUUtilityShaderLibraryDrawGeometryPS : public FPMUBasePixelShader
 
 IMPLEMENT_SHADER_TYPE(, FPMUUtilityShaderLibraryDrawGeometryVS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawGeometryVSPS.usf"), TEXT("DrawGeometryVS"), SF_Vertex);
 IMPLEMENT_SHADER_TYPE(, FPMUUtilityShaderLibraryDrawGeometryPS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawGeometryVSPS.usf"), TEXT("DrawGeometryPS"), SF_Pixel);
+
+class FPMUUtilityShaderLibraryDrawQuadVS : public FPMUBaseVertexShader
+{
+    typedef FPMUBaseVertexShader FBaseType;
+
+    PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(FPMUUtilityShaderLibraryDrawQuadVS, Global, true)
+
+    PMU_DECLARE_SHADER_PARAMETERS_2(
+        SRV,
+        FShaderResourceParameter,
+        FResourceId,
+        "QuadGeomData", QuadGeomData,
+        "QuadTransformData", QuadTransformData
+        )
+
+    PMU_DECLARE_SHADER_PARAMETERS_0(UAV,,)
+    PMU_DECLARE_SHADER_PARAMETERS_0(Value,,)
+};
+
+IMPLEMENT_SHADER_TYPE(, FPMUUtilityShaderLibraryDrawQuadVS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawGeometryVSPS.usf"), TEXT("DrawQuadVS"), SF_Vertex);
+
+class FPMUUtilityShaderLibraryDrawPolyVS : public FPMUBaseVertexShader
+{
+    typedef FPMUBaseVertexShader FBaseType;
+
+    PMU_DECLARE_SHADER_CONSTRUCTOR_DEFAULT_STATICS(FPMUUtilityShaderLibraryDrawPolyVS, Global, true)
+
+    PMU_DECLARE_SHADER_PARAMETERS_0(SRV,,)
+    PMU_DECLARE_SHADER_PARAMETERS_0(UAV,,)
+    PMU_DECLARE_SHADER_PARAMETERS_0(Value,,)
+};
+
+IMPLEMENT_SHADER_TYPE(, FPMUUtilityShaderLibraryDrawPolyVS, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUUtilityShaderLibraryDrawGeometryVSPS.usf"), TEXT("DrawPolyVS"), SF_Vertex);
 
 class FPMUUtilityShaderLibraryGetTexturePointValues : public FPMUBaseComputeShader<256,1,1>
 {
@@ -211,6 +246,54 @@ IMPLEMENT_SHADER_TYPE(, FPMUUtilityShaderLibraryGetTexturePointValues, TEXT("/Pl
 FVertexBufferRHIRef& UPMUUtilityShaderLibrary::GetFilterVertexBuffer()
 {
     return GPMUFilterVertexBuffer.VertexBufferRHI;
+}
+
+void UPMUUtilityShaderLibrary::AssignBlendState(FGraphicsPipelineStateInitializer& GraphicsPSOInit, EPMUShaderDrawBlendType BlendType)
+{
+    switch (BlendType)
+    {
+        case EPMUShaderDrawBlendType::DB_Opaque:
+            GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+            break;
+
+        case EPMUShaderDrawBlendType::DB_Max:
+            GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Max, BF_SourceAlpha, BF_One>::GetRHI();
+            break;
+
+        case EPMUShaderDrawBlendType::DB_Min:
+            GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Min, BF_SourceAlpha, BF_One>::GetRHI();
+            break;
+
+        case EPMUShaderDrawBlendType::DB_Add:
+            GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_SourceAlpha, BF_One>::GetRHI();
+            break;
+
+        case EPMUShaderDrawBlendType::DB_Sub:
+            GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Subtract, BF_SourceAlpha, BF_One>::GetRHI();
+            break;
+
+        case EPMUShaderDrawBlendType::DB_SubRev:
+            GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_ReverseSubtract, BF_SourceAlpha, BF_One>::GetRHI();
+            break;
+    }
+}
+
+void UPMUUtilityShaderLibrary::SetRenderTargetWithClear(FRHICommandListImmediate& RHICmdList, FTextureRHIParamRef Texture, bool bClearRenderTarget)
+{
+    if (bClearRenderTarget)
+    {
+        SetRenderTarget(
+            RHICmdList,
+            Texture,
+            FTextureRHIRef(),
+            ESimpleRenderTargetMode::EClearColorExistingDepth,
+            FExclusiveDepthStencil::DepthNop_StencilNop
+            );
+    }
+    else
+    {
+        SetRenderTarget(RHICmdList, Texture, FTextureRHIRef());
+    }
 }
 
 void UPMUUtilityShaderLibrary::DrawPolyPoints(
@@ -279,6 +362,7 @@ void UPMUUtilityShaderLibrary::DrawPolyPoints(
 
     // Construct shader vertex data
 
+    // Draw poly with no expansion
     if (FMath::IsNearlyZero(ExpandRadius))
     {
         TSharedRef<FRenderParameter> RenderParameter(new FRenderParameter);
@@ -314,11 +398,10 @@ void UPMUUtilityShaderLibrary::DrawPolyPoints(
                     );
             } );
     }
+    // Draw poly with expansion
     else
     {
         // Generate offset points
-
-        ExpandRadius = -FMath::Abs(ExpandRadius);
 
         FAJCVectorPath PointVectorPath({ Points, true });
         FAJCPathRef PointPath;
@@ -470,18 +553,12 @@ void UPMUUtilityShaderLibrary::DrawGeometry_RT(
 
     check(Vertices.Num() == VCount);
 
-    // Set render target
-
-    FTexture2DRHIRef CurrentTexture = TextureResource->GetRenderTargetTexture();
-    SetRenderTarget(RHICmdList, CurrentTexture, FTextureRHIRef());
-
     // Prepare graphics pipelane
 
     TShaderMapRef<FPMUUtilityShaderLibraryDrawGeometryVS> VSShader(GetGlobalShaderMap(FeatureLevel));
     TShaderMapRef<FPMUUtilityShaderLibraryDrawGeometryPS> PSShader(GetGlobalShaderMap(FeatureLevel));
 
     FGraphicsPipelineStateInitializer GraphicsPSOInit;
-    RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
     GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
     GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
     GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
@@ -489,6 +566,16 @@ void UPMUUtilityShaderLibrary::DrawGeometry_RT(
     GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector3();
     GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VSShader);
     GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PSShader);
+
+    // Set render target and and apply render target info to graphics pipeline
+
+    FTexture2DRHIRef CurrentTexture = TextureResource->GetRenderTargetTexture();
+    SetRenderTarget(RHICmdList, CurrentTexture, FTextureRHIRef());
+
+    RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+    // Set graphics pipeline
+
     SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
     // Draw primitives
@@ -524,10 +611,11 @@ void UPMUUtilityShaderLibrary::GetTexturePointValues(
     FPMUShaderTextureParameterInput TextureInput,
     const FVector2D Dimension,
     const TArray<FVector2D>& Points,
-    TArray<FLinearColor>& Values
+    TArray<FLinearColor>& Values,
+    UGWTTickEvent* CallbackEvent
     )
 {
-	const UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
     FPMUShaderTextureParameterInputResource TextureResource(TextureInput.GetResource_GT());
 
     if (! IsValid(World))
@@ -567,31 +655,35 @@ void UPMUUtilityShaderLibrary::GetTexturePointValues(
         FVector2D Dimension;
         const TArray<FVector2D>* Points;
         TArray<FLinearColor>* Values;
+        FGWTTickEventRef CallbackRef;
     };
 
-    TSharedRef<FRenderParameter> RenderParameter(new FRenderParameter);
-    RenderParameter->FeatureLevel = World->Scene->GetFeatureLevel();
-    RenderParameter->TextureResource = TextureResource;
-    RenderParameter->Dimension = Dimension;
-    RenderParameter->Points = &Points;
-    RenderParameter->Values = &Values;
+    FRenderParameter RenderParameter = {
+        World->Scene->GetFeatureLevel(),
+        TextureResource,
+        Dimension,
+        &Points,
+        &Values,
+        { CallbackEvent }
+        };
 
     Values.SetNumZeroed(Points.Num(), true);
 
     // Enqueue render command
 
     ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
-        PMUUtilityShaderLibrary_DrawPolyPoints,
-        TSharedRef<FRenderParameter>, RenderParameterRef, RenderParameter,
+        PMUUtilityShaderLibrary_GetTexturePointValues,
+        FRenderParameter, RenderParameter, RenderParameter,
         {
             UPMUUtilityShaderLibrary::GetTexturePointValues_RT(
                 RHICmdList,
-                RenderParameterRef->FeatureLevel,
-                RenderParameterRef->TextureResource,
-                RenderParameterRef->Dimension,
-                *RenderParameterRef->Points,
-                *RenderParameterRef->Values
+                RenderParameter.FeatureLevel,
+                RenderParameter.TextureResource,
+                RenderParameter.Dimension,
+                *RenderParameter.Points,
+                *RenderParameter.Values
                 );
+            RenderParameter.CallbackRef.EnqueueCallback();
         } );
 }
 
@@ -838,14 +930,16 @@ void UPMUUtilityShaderLibrary::ApplyFilter_RT(
     GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
     GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
     GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
+    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
     GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VSShader);
     GraphicsPSOInit.BoundShaderState.PixelShaderRHI = FilterShaderWorker->GetPixelShader(FeatureLevel);
 
-    // Set render target and set graphics pipeline
+    // Set render target and and apply render target info to graphics pipeline
 
     SetRenderTarget(RHICmdList, TextureRTV, FTextureRHIRef());
     RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+    // Set graphics pipeline
 
     SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -902,6 +996,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter(
     UObject* WorldContextObject,
     UMaterialInterface* Material,
     int32 RepeatCount,
+    FPMUShaderDrawConfig DrawConfig,
     FPMUShaderTextureParameterInput SourceTexture,
     UTextureRenderTarget2D* RenderTarget,
     UTextureRenderTarget2D* SwapTarget,
@@ -913,25 +1008,25 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter(
 
     if (! IsValid(World))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterialFilter() ABORTED, INVALID WORLD CONTEXT OBJECT"));
         return;
     }
 
     if (! World->Scene)
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID WORLD SCENE"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterialFilter() ABORTED, INVALID WORLD SCENE"));
         return;
     }
 
     if (! IsValid(Material))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID MATERIAL"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterialFilter() ABORTED, INVALID MATERIAL"));
         return;
     }
 
     if (! IsValid(RenderTarget))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID RENDER TARGET"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterialFilter() ABORTED, INVALID RENDER TARGET"));
         return;
     }
 
@@ -939,7 +1034,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter(
 
     if (! RenderTargetResource)
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID RENDER TARGET TEXTURE RESOURCE"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterialFilter() ABORTED, INVALID RENDER TARGET TEXTURE RESOURCE"));
         return;
     }
 
@@ -955,7 +1050,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter(
         }
         else
         {
-            UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() INVALID SWAP RENDER TARGET DIMENSION / FORMAT"));
+            UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterialFilter() INVALID SWAP RENDER TARGET DIMENSION / FORMAT"));
         }
     }
 
@@ -966,6 +1061,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter(
     {
         ERHIFeatureLevel::Type FeatureLevel;
         int32 RepeatCount;
+        FPMUShaderDrawConfig DrawConfig;
         FPMUShaderTextureParameterInputResource SourceTextureResource;
         FTextureRenderTarget2DResource* RenderTargetResource;
         FTextureRenderTarget2DResource* SwapTargetResource;
@@ -976,6 +1072,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter(
     FRenderParameter RenderParameter = {
         FeatureLevel,
         RepeatCount,
+        DrawConfig,
         SourceTexture.GetResource_GT(),
         RenderTargetResource,
         SwapTargetResource,
@@ -984,13 +1081,14 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter(
         };
 
     ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
-        PMUUtilityShaderLibrary_ApplyFilter,
+        PMUUtilityShaderLibrary_ApplyMaterialFilter,
         FRenderParameter, RenderParameter, RenderParameter,
         {
             UPMUUtilityShaderLibrary::ApplyMaterialFilter_RT(
                 RHICmdList,
                 RenderParameter.FeatureLevel,
                 RenderParameter.RepeatCount,
+                RenderParameter.DrawConfig,
                 RenderParameter.SourceTextureResource,
                 RenderParameter.RenderTargetResource,
                 RenderParameter.SwapTargetResource,
@@ -1004,6 +1102,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter_RT(
     FRHICommandListImmediate& RHICmdList,
     ERHIFeatureLevel::Type FeatureLevel,
     int32 RepeatCount,
+    FPMUShaderDrawConfig DrawConfig,
     FPMUShaderTextureParameterInputResource& SourceTextureResource,
     FTextureRenderTarget2DResource* RenderTargetResource,
     FTextureRenderTarget2DResource* SwapTargetResource,
@@ -1099,26 +1198,30 @@ void UPMUUtilityShaderLibrary::ApplyMaterialFilter_RT(
 
 	FSceneView View(ViewInitOptions);
 
+    RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
+
     // Prepare graphics pipelane
 
     TShaderMapRef<FPMUUtilityShaderLibraryDrawScreenVS> VSShader(GetGlobalShaderMap(FeatureLevel));
 
 	const FMaterialShaderMap* MaterialShaderMap = MaterialResource->GetRenderingThreadShaderMap();
-	auto PSShader = MaterialShaderMap->GetShader<FPMUUtilityShaderLibraryDrawScreenMaterialPS>();
+	auto PSShader = MaterialShaderMap->GetShader<FPMUUtilityShaderLibraryDrawScreenMaterialPS<0>>();
 
     FGraphicsPipelineStateInitializer GraphicsPSOInit;
-    GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+    AssignBlendState(GraphicsPSOInit, DrawConfig.BlendType);
     GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
     GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
     GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
+    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
     GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VSShader);
     GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PSShader->GetPixelShader();
 
-    // Set render target and set graphics pipeline
+    // Set render target and and apply render target info to graphics pipeline
 
-    SetRenderTarget(RHICmdList, TextureRTV, FTextureRHIRef());
+    SetRenderTargetWithClear(RHICmdList, TextureRTV, DrawConfig.bClearRenderTarget);
     RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+    // Set graphics pipeline
 
     SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -1202,6 +1305,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterial(
     UObject* WorldContextObject,
     UMaterialInterface* Material,
     UTextureRenderTarget2D* RenderTarget,
+    FPMUShaderDrawConfig DrawConfig,
     UGWTTickEvent* CallbackEvent
     )
 {
@@ -1210,25 +1314,25 @@ void UPMUUtilityShaderLibrary::ApplyMaterial(
 
     if (! IsValid(World))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterial() ABORTED, INVALID WORLD CONTEXT OBJECT"));
         return;
     }
 
     if (! World->Scene)
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID WORLD SCENE"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterial() ABORTED, INVALID WORLD SCENE"));
         return;
     }
 
     if (! IsValid(Material))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID MATERIAL"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterial() ABORTED, INVALID MATERIAL"));
         return;
     }
 
     if (! IsValid(RenderTarget))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID RENDER TARGET"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterial() ABORTED, INVALID RENDER TARGET"));
         return;
     }
 
@@ -1236,7 +1340,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterial(
 
     if (! RenderTargetResource)
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyFilter() ABORTED, INVALID RENDER TARGET TEXTURE RESOURCE"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::ApplyMaterial() ABORTED, INVALID RENDER TARGET TEXTURE RESOURCE"));
         return;
     }
 
@@ -1248,6 +1352,7 @@ void UPMUUtilityShaderLibrary::ApplyMaterial(
         ERHIFeatureLevel::Type FeatureLevel;
         FTextureRenderTarget2DResource* RenderTargetResource;
         const FMaterialRenderProxy* MaterialRenderProxy;
+        FPMUShaderDrawConfig DrawConfig;
         FGWTTickEventRef CallbackRef;
     };
 
@@ -1255,18 +1360,20 @@ void UPMUUtilityShaderLibrary::ApplyMaterial(
         FeatureLevel,
         RenderTargetResource,
         MaterialRenderProxy,
+        DrawConfig,
         { CallbackEvent }
         };
 
     ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
-        PMUUtilityShaderLibrary_ApplyFilter,
+        PMUUtilityShaderLibrary_ApplyMaterial,
         FRenderParameter, RenderParameter, RenderParameter,
         {
             UPMUUtilityShaderLibrary::ApplyMaterial_RT(
                 RHICmdList,
                 RenderParameter.FeatureLevel,
                 RenderParameter.RenderTargetResource,
-                RenderParameter.MaterialRenderProxy
+                RenderParameter.MaterialRenderProxy,
+                RenderParameter.DrawConfig
                 );
             RenderParameter.CallbackRef.EnqueueCallback();
         } );
@@ -1276,7 +1383,8 @@ void UPMUUtilityShaderLibrary::ApplyMaterial_RT(
     FRHICommandListImmediate& RHICmdList,
     ERHIFeatureLevel::Type FeatureLevel,
     FTextureRenderTarget2DResource* RenderTargetResource,
-    const FMaterialRenderProxy* MaterialRenderProxy
+    const FMaterialRenderProxy* MaterialRenderProxy,
+    FPMUShaderDrawConfig DrawConfig
     )
 {
     check(IsInRenderingThread());
@@ -1323,26 +1431,30 @@ void UPMUUtilityShaderLibrary::ApplyMaterial_RT(
 
 	FSceneView View(ViewInitOptions);
 
+    RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
+
     // Prepare graphics pipelane
 
     TShaderMapRef<FPMUUtilityShaderLibraryDrawScreenVS> VSShader(GetGlobalShaderMap(FeatureLevel));
 
 	const FMaterialShaderMap* MaterialShaderMap = MaterialResource->GetRenderingThreadShaderMap();
-	auto PSShader = MaterialShaderMap->GetShader<FPMUUtilityShaderLibraryDrawScreenMaterialPS>();
+	auto PSShader = MaterialShaderMap->GetShader<FPMUUtilityShaderLibraryDrawScreenMaterialPS<0>>();
 
     FGraphicsPipelineStateInitializer GraphicsPSOInit;
-    GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+    AssignBlendState(GraphicsPSOInit, DrawConfig.BlendType);
     GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
     GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
     GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GScreenVertexDeclaration.VertexDeclarationRHI;
+    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
     GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VSShader);
     GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PSShader->GetPixelShader();
 
-    // Set render target and set graphics pipeline
+    // Set render target and and apply render target info to graphics pipeline
 
-    SetRenderTarget(RHICmdList, TextureRTV, FTextureRHIRef());
+    SetRenderTargetWithClear(RHICmdList, TextureRTV, DrawConfig.bClearRenderTarget);
     RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+    // Set graphics pipeline
 
     SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -1377,6 +1489,534 @@ void UPMUUtilityShaderLibrary::ApplyMaterial_RT(
     RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, 1);
 
     // Unbind shader parameters
+    PSShader->UnbindBuffers(RHICmdList);
+
+    // Resolve render target
+
+    RHICmdList.CopyToResolveTarget(
+        TextureRTV,
+        TextureRSV,
+        FResolveParams()
+        );
+
+    // Release render target
+
+    SetRenderTarget(RHICmdList, FTextureRHIRef(), FTextureRHIRef());
+}
+
+void UPMUUtilityShaderLibrary::DrawMaterialQuad(
+    UObject* WorldContextObject,
+    const TArray<FPMUShaderQuadGeometry>& Quads,
+    UMaterialInterface* Material,
+    UTextureRenderTarget2D* RenderTarget,
+    FPMUShaderDrawConfig DrawConfig,
+    UGWTTickEvent* CallbackEvent
+    )
+{
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+    FTextureRenderTarget2DResource* RenderTargetResource = nullptr;
+
+    if (! IsValid(World))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialQuad() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        return;
+    }
+
+    if (! World->Scene)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialQuad() ABORTED, INVALID WORLD SCENE"));
+        return;
+    }
+
+    if (! IsValid(Material))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialQuad() ABORTED, INVALID MATERIAL"));
+        return;
+    }
+
+    if (! IsValid(RenderTarget))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialQuad() ABORTED, INVALID RENDER TARGET"));
+        return;
+    }
+
+    if (Quads.Num() < 1)
+    {
+        return;
+    }
+
+    RenderTargetResource = static_cast<FTextureRenderTarget2DResource*>(RenderTarget->GameThread_GetRenderTargetResource());
+
+    if (! RenderTargetResource)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialQuad() ABORTED, INVALID RENDER TARGET TEXTURE RESOURCE"));
+        return;
+    }
+
+    ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+    const FMaterialRenderProxy* MaterialRenderProxy = Material->GetRenderProxy(0);
+
+    struct FRenderParameter
+    {
+        ERHIFeatureLevel::Type FeatureLevel;
+        const TArray<FPMUShaderQuadGeometry> Quads;
+        FTextureRenderTarget2DResource* RenderTargetResource;
+        const FMaterialRenderProxy* MaterialRenderProxy;
+        FPMUShaderDrawConfig DrawConfig;
+        FGWTTickEventRef CallbackRef;
+    };
+
+    FRenderParameter RenderParameter = {
+        FeatureLevel,
+        Quads,
+        RenderTargetResource,
+        MaterialRenderProxy,
+        DrawConfig,
+        { CallbackEvent }
+        };
+
+    ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
+        PMUUtilityShaderLibrary_ApplyMaterial,
+        FRenderParameter, RenderParameter, RenderParameter,
+        {
+            UPMUUtilityShaderLibrary::DrawMaterialQuad_RT(
+                RHICmdList,
+                RenderParameter.FeatureLevel,
+                RenderParameter.Quads,
+                RenderParameter.RenderTargetResource,
+                RenderParameter.MaterialRenderProxy,
+                RenderParameter.DrawConfig
+                );
+            RenderParameter.CallbackRef.EnqueueCallback();
+        } );
+}
+
+void UPMUUtilityShaderLibrary::DrawMaterialQuad_RT(
+    FRHICommandListImmediate& RHICmdList,
+    ERHIFeatureLevel::Type FeatureLevel,
+    const TArray<FPMUShaderQuadGeometry>& Quads,
+    FTextureRenderTarget2DResource* RenderTargetResource,
+    const FMaterialRenderProxy* MaterialRenderProxy,
+    FPMUShaderDrawConfig DrawConfig
+    )
+{
+    check(IsInRenderingThread());
+
+    const FMaterial* MaterialResource = MaterialRenderProxy->GetMaterial(FeatureLevel);
+
+    if (! RenderTargetResource || ! MaterialRenderProxy || ! MaterialResource)
+    {
+        return;
+    }
+
+    // Prepare render target texture and resolve target
+    FTextureRHIParamRef TextureRTV = RenderTargetResource->GetRenderTargetTexture();
+    FTextureRHIParamRef TextureRSV = RenderTargetResource->TextureRHI;
+
+    if (! TextureRTV || ! TextureRSV)
+    {
+        return;
+    }
+
+    // Create quad data SRV
+
+    enum { SIZE_FLOAT32    = sizeof(float) };
+    enum { SIZE_FLOAT32_1D = SIZE_FLOAT32 * 1 };
+    enum { SIZE_FLOAT32_2D = SIZE_FLOAT32 * 2 };
+    enum { SIZE_FLOAT32_4D = SIZE_FLOAT32 * 4 };
+
+    const int32 QuadCount = Quads.Num();
+
+    TResourceArray<FVector4, VERTEXBUFFER_ALIGNMENT> QuadGeoms;
+    TResourceArray<FVector4, VERTEXBUFFER_ALIGNMENT> QuadTransforms;
+
+    QuadGeoms.Reserve(QuadCount);
+    QuadTransforms.Reserve(QuadCount);
+
+    for (const FPMUShaderQuadGeometry& Quad : Quads)
+    {
+        const FVector2D& Origin(Quad.Origin);
+        const FVector2D& Size(Quad.Size);
+
+        QuadGeoms.Emplace(Origin.X, Origin.Y, Size.X, Size.Y);
+        QuadTransforms.Emplace(Quad.Scale, Quad.AngleRadian, Quad.Luminosity, 0.f);
+    }
+    
+    FPMUReadBuffer QuadGeomData;
+    FPMUReadBuffer QuadTransformData;
+
+    QuadGeomData.Initialize(
+        SIZE_FLOAT32_4D,
+        QuadCount,
+        PF_A32B32G32R32F,
+        &QuadGeoms,
+        BUF_Static,
+        TEXT("QuadGeomData")
+        );
+
+    QuadTransformData.Initialize(
+        SIZE_FLOAT32_4D,
+        QuadCount,
+        PF_A32B32G32R32F,
+        &QuadTransforms,
+        BUF_Static,
+        TEXT("QuadTransformData")
+        );
+
+	// Create a new view family
+
+	FSceneViewFamily ViewFamily(
+        FSceneViewFamily::ConstructionValues(
+            RenderTargetResource,
+            nullptr,
+            FEngineShowFlags(ESFIM_Game)
+            )
+            .SetWorldTimes(0.f, 0.f, 0.f)
+            .SetGammaCorrection(RenderTargetResource->GetDisplayGamma())
+        );
+
+	// Create a new view
+
+	FIntRect ViewRect(FIntPoint(0, 0), RenderTargetResource->GetSizeXY());
+	FSceneViewInitOptions ViewInitOptions;
+	ViewInitOptions.ViewFamily = &ViewFamily;
+	ViewInitOptions.SetViewRectangle(ViewRect);
+	ViewInitOptions.ViewOrigin = FVector::ZeroVector;
+	ViewInitOptions.ViewRotationMatrix = FMatrix::Identity;
+	ViewInitOptions.ProjectionMatrix = FMatrix::Identity;
+	ViewInitOptions.BackgroundColor = FLinearColor::Black;
+	ViewInitOptions.OverlayColor = FLinearColor::White;
+
+	FSceneView View(ViewInitOptions);
+
+    RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
+
+    // Prepare graphics pipelane
+
+    TShaderMapRef<FPMUUtilityShaderLibraryDrawQuadVS> VSShader(GetGlobalShaderMap(FeatureLevel));
+
+	const FMaterialShaderMap* MaterialShaderMap = MaterialResource->GetRenderingThreadShaderMap();
+	auto PSShader = MaterialShaderMap->GetShader<FPMUUtilityShaderLibraryDrawScreenMaterialPS<1>>();
+
+    FGraphicsPipelineStateInitializer GraphicsPSOInit;
+    AssignBlendState(GraphicsPSOInit, DrawConfig.BlendType);
+    GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+    GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+    GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+    GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VSShader);
+    GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PSShader->GetPixelShader();
+
+    // Set render target and and apply render target info to graphics pipeline
+
+    SetRenderTargetWithClear(RHICmdList, TextureRTV, DrawConfig.bClearRenderTarget);
+    RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+    // Set graphics pipeline
+
+    SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+    // Bind shader parameters
+
+    VSShader->BindSRV(RHICmdList, TEXT("QuadGeomData"), QuadGeomData.SRV);
+    VSShader->BindSRV(RHICmdList, TEXT("QuadTransformData"), QuadTransformData.SRV);
+
+    PSShader->SetParameters(
+        RHICmdList,
+        PSShader->GetPixelShader(),
+        MaterialRenderProxy,
+        *MaterialRenderProxy->GetMaterial(FeatureLevel),
+        View,
+        View.ViewUniformBuffer,
+        ESceneTextureSetupMode::None
+        );
+
+	{
+		auto& PrimitiveVS = VSShader->GetUniformBufferParameter<FPrimitiveUniformShaderParameters>();
+		auto& PrimitivePS = PSShader->GetUniformBufferParameter<FPrimitiveUniformShaderParameters>();
+
+		// Uncomment to track down usage of the Primitive uniform buffer
+		//check(! PrimitiveVS.IsBound());
+		//check(! PrimitivePS.IsBound());
+
+		// To prevent potential shader error (UE-18852 ElementalDemo crashes due to nil constant buffer)
+		SetUniformBufferParameter(RHICmdList, VSShader->GetVertexShader(), PrimitiveVS, GIdentityPrimitiveUniformBuffer);
+        SetUniformBufferParameter(RHICmdList, PSShader->GetPixelShader() , PrimitivePS, GIdentityPrimitiveUniformBuffer);
+	}
+
+    // Draw primitives
+
+    RHICmdList.SetStreamSource(0, UPMUUtilityShaderLibrary::GetFilterVertexBuffer(), 0);
+    RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, QuadCount);
+
+    // Unbind shader parameters
+
+    VSShader->UnbindBuffers(RHICmdList);
+    PSShader->UnbindBuffers(RHICmdList);
+
+    // Resolve render target
+
+    RHICmdList.CopyToResolveTarget(
+        TextureRTV,
+        TextureRSV,
+        FResolveParams()
+        );
+
+    // Release render target
+
+    SetRenderTarget(RHICmdList, FTextureRHIRef(), FTextureRHIRef());
+}
+
+void UPMUUtilityShaderLibrary::DrawMaterialPoly(
+    UObject* WorldContextObject,
+    const TArray<FPMUShaderPolyGeometry>& Polys,
+    UMaterialInterface* Material,
+    UTextureRenderTarget2D* RenderTarget,
+    FPMUShaderDrawConfig DrawConfig,
+    UGWTTickEvent* CallbackEvent
+    )
+{
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+    FTextureRenderTarget2DResource* RenderTargetResource = nullptr;
+
+    if (! IsValid(World))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialPoly() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        return;
+    }
+
+    if (! World->Scene)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialPoly() ABORTED, INVALID WORLD SCENE"));
+        return;
+    }
+
+    if (! IsValid(Material))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialPoly() ABORTED, INVALID MATERIAL"));
+        return;
+    }
+
+    if (! IsValid(RenderTarget))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialPoly() ABORTED, INVALID RENDER TARGET"));
+        return;
+    }
+
+    if (Polys.Num() < 1)
+    {
+        return;
+    }
+
+    RenderTargetResource = static_cast<FTextureRenderTarget2DResource*>(RenderTarget->GameThread_GetRenderTargetResource());
+
+    if (! RenderTargetResource)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUUtilityShaderLibrary::DrawMaterialPoly() ABORTED, INVALID RENDER TARGET TEXTURE RESOURCE"));
+        return;
+    }
+
+    ERHIFeatureLevel::Type FeatureLevel = World->Scene->GetFeatureLevel();
+    const FMaterialRenderProxy* MaterialRenderProxy = Material->GetRenderProxy(0);
+
+    struct FRenderParameter
+    {
+        ERHIFeatureLevel::Type FeatureLevel;
+        TArray<FVector4> Vertices;
+        TArray<int32> Indices;
+        FTextureRenderTarget2DResource* RenderTargetResource;
+        const FMaterialRenderProxy* MaterialRenderProxy;
+        FPMUShaderDrawConfig DrawConfig;
+        FGWTTickEventRef CallbackRef;
+    };
+
+    FRenderParameter RenderParameter = {
+        FeatureLevel,
+        {},
+        {},
+        RenderTargetResource,
+        MaterialRenderProxy,
+        DrawConfig,
+        { CallbackEvent }
+        };
+
+    for (const FPMUShaderPolyGeometry& Poly : Polys)
+    {
+        const int32 Sides = FMath::Max(3, Poly.Sides);
+
+        TArray<FVector4>& Vertices(RenderParameter.Vertices);
+        TArray<int32>& Indices(RenderParameter.Indices);
+
+        const FVector2D& Origin(Poly.Origin);
+        const FVector2D& Size(Poly.Size);
+        const float Luminosity = Poly.Luminosity;
+        const float Scale = Poly.Scale;
+        const float UnitAngle = 2*PI / Sides;
+        int32 OriginIndex = Vertices.Num();
+        int32 IndexOffset = OriginIndex+1;
+
+        Vertices.Emplace(Origin.X, Origin.Y, Luminosity, 1.f);
+
+        for (int32 i=0; i<Sides; ++i)
+        {
+            float ExtentS, ExtentC;
+            float AngleDeg = FMath::RadiansToDegrees(Poly.AngleRadian);
+            FMath::SinCos(&ExtentS, &ExtentC, i*UnitAngle);
+
+            FVector2D Extent(ExtentC, ExtentS);
+            FVector2D Vertex(Origin + (Extent * Size * Scale).GetRotated(AngleDeg));
+
+            Vertices.Emplace(Vertex.X, Vertex.Y, Luminosity, 0.f);
+
+            Indices.Emplace(OriginIndex  );
+            Indices.Emplace(IndexOffset+i);
+            Indices.Emplace(IndexOffset+(i+1)%Sides);
+        }
+    }
+
+    ENQUEUE_UNIQUE_RENDER_COMMAND_ONEPARAMETER(
+        PMUUtilityShaderLibrary_ApplyMaterial,
+        FRenderParameter, RenderParameter, RenderParameter,
+        {
+            UPMUUtilityShaderLibrary::DrawMaterialPoly_RT(
+                RHICmdList,
+                RenderParameter.FeatureLevel,
+                RenderParameter.Vertices,
+                RenderParameter.Indices,
+                RenderParameter.RenderTargetResource,
+                RenderParameter.MaterialRenderProxy,
+                RenderParameter.DrawConfig
+                );
+            RenderParameter.CallbackRef.EnqueueCallback();
+        } );
+}
+
+void UPMUUtilityShaderLibrary::DrawMaterialPoly_RT(
+    FRHICommandListImmediate& RHICmdList,
+    ERHIFeatureLevel::Type FeatureLevel,
+    const TArray<FVector4>& Vertices,
+    const TArray<int32>& Indices,
+    FTextureRenderTarget2DResource* RenderTargetResource,
+    const FMaterialRenderProxy* MaterialRenderProxy,
+    FPMUShaderDrawConfig DrawConfig
+    )
+{
+    check(IsInRenderingThread());
+
+    const FMaterial* MaterialResource = MaterialRenderProxy->GetMaterial(FeatureLevel);
+
+    if (! RenderTargetResource || ! MaterialRenderProxy || ! MaterialResource)
+    {
+        return;
+    }
+
+    // Prepare render target texture and resolve target
+    FTextureRHIParamRef TextureRTV = RenderTargetResource->GetRenderTargetTexture();
+    FTextureRHIParamRef TextureRSV = RenderTargetResource->TextureRHI;
+
+    if (! TextureRTV || ! TextureRSV)
+    {
+        return;
+    }
+
+	// Create a new view family
+
+	FSceneViewFamily ViewFamily(
+        FSceneViewFamily::ConstructionValues(
+            RenderTargetResource,
+            nullptr,
+            FEngineShowFlags(ESFIM_Game)
+            )
+            .SetWorldTimes(0.f, 0.f, 0.f)
+            .SetGammaCorrection(RenderTargetResource->GetDisplayGamma())
+        );
+
+	// Create a new view
+
+	FIntRect ViewRect(FIntPoint(0, 0), RenderTargetResource->GetSizeXY());
+	FSceneViewInitOptions ViewInitOptions;
+	ViewInitOptions.ViewFamily = &ViewFamily;
+	ViewInitOptions.SetViewRectangle(ViewRect);
+	ViewInitOptions.ViewOrigin = FVector::ZeroVector;
+	ViewInitOptions.ViewRotationMatrix = FMatrix::Identity;
+	ViewInitOptions.ProjectionMatrix = FMatrix::Identity;
+	ViewInitOptions.BackgroundColor = FLinearColor::Black;
+	ViewInitOptions.OverlayColor = FLinearColor::White;
+
+	FSceneView View(ViewInitOptions);
+
+    RHICmdList.SetViewport(ViewRect.Min.X, ViewRect.Min.Y, 0.0f, ViewRect.Max.X, ViewRect.Max.Y, 1.0f);
+
+    // Prepare graphics pipelane
+
+    TShaderMapRef<FPMUUtilityShaderLibraryDrawPolyVS> VSShader(GetGlobalShaderMap(FeatureLevel));
+
+	const FMaterialShaderMap* MaterialShaderMap = MaterialResource->GetRenderingThreadShaderMap();
+	auto PSShader = MaterialShaderMap->GetShader<FPMUUtilityShaderLibraryDrawScreenMaterialPS<1>>();
+
+    FGraphicsPipelineStateInitializer GraphicsPSOInit;
+    AssignBlendState(GraphicsPSOInit, DrawConfig.BlendType);
+    GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+    GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+    GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+    GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+    GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VSShader);
+    GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PSShader->GetPixelShader();
+
+    // Set render target and and apply render target info to graphics pipeline
+
+    SetRenderTargetWithClear(RHICmdList, TextureRTV, DrawConfig.bClearRenderTarget);
+    RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+    // Set graphics pipeline
+
+    SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+    // Bind shader parameters
+
+    PSShader->SetParameters(
+        RHICmdList,
+        PSShader->GetPixelShader(),
+        MaterialRenderProxy,
+        *MaterialRenderProxy->GetMaterial(FeatureLevel),
+        View,
+        View.ViewUniformBuffer,
+        ESceneTextureSetupMode::None
+        );
+
+	{
+		auto& PrimitiveVS = VSShader->GetUniformBufferParameter<FPrimitiveUniformShaderParameters>();
+		auto& PrimitivePS = PSShader->GetUniformBufferParameter<FPrimitiveUniformShaderParameters>();
+
+		// Uncomment to track down usage of the Primitive uniform buffer
+		//check(! PrimitiveVS.IsBound());
+		//check(! PrimitivePS.IsBound());
+
+		// To prevent potential shader error (UE-18852 ElementalDemo crashes due to nil constant buffer)
+		SetUniformBufferParameter(RHICmdList, VSShader->GetVertexShader(), PrimitiveVS, GIdentityPrimitiveUniformBuffer);
+        SetUniformBufferParameter(RHICmdList, PSShader->GetPixelShader() , PrimitivePS, GIdentityPrimitiveUniformBuffer);
+	}
+
+    // Draw primitives
+
+    //RHICmdList.SetStreamSource(0, UPMUUtilityShaderLibrary::GetFilterVertexBuffer(), 0);
+    //RHICmdList.DrawPrimitive(PT_TriangleStrip, 0, 2, QuadCount);
+
+    FPMURHIUtilityLibrary::DrawIndexedPrimitiveVolatile(
+        RHICmdList,
+        PT_TriangleList,
+        0,
+        Vertices.Num(),
+        Indices.Num() / 3,
+        Indices.GetData(),
+        Indices.GetTypeSize(),
+        Vertices.GetData(),
+        Vertices.GetTypeSize()
+        );
+
+    // Unbind shader parameters
+
+    VSShader->UnbindBuffers(RHICmdList);
     PSShader->UnbindBuffers(RHICmdList);
 
     // Resolve render target

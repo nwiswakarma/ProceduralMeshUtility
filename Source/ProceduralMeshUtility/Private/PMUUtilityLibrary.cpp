@@ -359,6 +359,30 @@ void UPMUUtilityLibrary::PolyClip(const TArray<FVector2D>& Points, TArray<int32>
     FECUtils::Earcut(Polygon, OutIndices, bInversed);
 }
 
+void UPMUUtilityLibrary::PolyClipGroups(const TArray<FPMUPoints>& PolyGroups, TArray<int32>& OutIndices, FPMUPoints& OutPoints, bool bCombinePoints, bool bInversed)
+{
+    FECPolygon Polygon;
+    int32 PointCount = 0;
+
+    for (const FPMUPoints& Poly : PolyGroups)
+    {
+        Polygon.Data.Emplace(Poly.Data);
+        PointCount += Poly.Data.Num();
+    }
+
+    if (bCombinePoints)
+    {
+        OutPoints.Data.Reset(PointCount);
+
+        for (const FPMUPoints& Poly : PolyGroups)
+        {
+            OutPoints.Data.Append(Poly.Data);
+        }
+    }
+
+    FECUtils::Earcut(Polygon, OutIndices, bInversed);
+}
+
 TArray<int32> UPMUUtilityLibrary::MaskPoints(const TArray<FVector2D>& Points, const TArray<uint8>& Mask, const int32 SizeX, const int32 SizeY, const uint8 Threshold)
 {
     TArray<int32> Indices;

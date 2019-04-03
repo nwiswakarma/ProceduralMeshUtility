@@ -76,7 +76,12 @@ struct FPMURWBuffer
         const TCHAR* InDebugName = NULL
         )
 	{
-		check(GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5);
+		check( GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5 
+			|| IsVulkanPlatform(GMaxRHIShaderPlatform) 
+			|| IsMetalPlatform(GMaxRHIShaderPlatform)
+			|| (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1 && GSupportsResourceView)
+		);
+
 		// Provide a debug name if using Fast VRAM so the allocators diagnostics will work
 		ensure(!((AdditionalUsage & BUF_FastVRAM) && !InDebugName));
 
@@ -98,7 +103,12 @@ struct FPMURWBuffer
         const TCHAR* InDebugName = NULL
         )
 	{
-		check(GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5);
+		check( GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5 
+			|| IsVulkanPlatform(GMaxRHIShaderPlatform) 
+			|| IsMetalPlatform(GMaxRHIShaderPlatform)
+			|| (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1 && GSupportsResourceView)
+		);
+
 		// Provide a debug name if using Fast VRAM so the allocators diagnostics will work
 		ensure(!((AdditionalUsage & BUF_FastVRAM) && !InDebugName));
 
@@ -131,6 +141,89 @@ struct FPMURWBuffer
 		NumBytes = 0;
 		Buffer.SafeRelease();
 		UAV.SafeRelease();
+		SRV.SafeRelease();
+	}
+};
+
+// Encapsulates a GPU read buffer with its SRV
+struct FPMUReadBuffer
+{
+	FVertexBufferRHIRef Buffer;
+	FShaderResourceViewRHIRef SRV;
+	uint32 NumBytes;
+
+	FPMUReadBuffer()
+		: NumBytes(0)
+	{
+    }
+
+	~FPMUReadBuffer()
+	{
+		Release();
+	}
+
+    FORCEINLINE bool IsValid() const
+    {
+        return NumBytes > 0;
+    }
+
+	// @param AdditionalUsage passed down to RHICreateVertexBuffer(), get combined with "BUF_UnorderedAccess | BUF_ShaderResource" e.g. BUF_Static
+    void Initialize(
+        uint32 BytesPerElement,
+        uint32 NumElements,
+        EPixelFormat Format,
+        uint32 AdditionalUsage = 0,
+        const TCHAR* InDebugName = NULL
+        )
+	{
+        check(GSupportsResourceView);
+
+		NumBytes = BytesPerElement * NumElements;
+		FRHIResourceCreateInfo CreateInfo;
+		CreateInfo.DebugName = InDebugName;
+		Buffer = RHICreateVertexBuffer(NumBytes, BUF_UnorderedAccess | BUF_ShaderResource | AdditionalUsage, CreateInfo);
+		SRV = RHICreateShaderResourceView(Buffer, BytesPerElement, Format);
+	}
+
+	// @param AdditionalUsage passed down to RHICreateVertexBuffer(), get combined with "BUF_UnorderedAccess | BUF_ShaderResource" e.g. BUF_Static
+	void Initialize(
+        uint32 BytesPerElement,
+        uint32 NumElements,
+        EPixelFormat Format,
+        FResourceArrayInterface* InitResourceArrayPtr,
+        uint32 AdditionalUsage = 0,
+        const TCHAR* InDebugName = NULL
+        )
+	{
+        check(GSupportsResourceView);
+
+		NumBytes = BytesPerElement * NumElements;
+		FRHIResourceCreateInfo CreateInfo(InitResourceArrayPtr);
+		CreateInfo.DebugName = InDebugName;
+		Buffer = RHICreateVertexBuffer(NumBytes, BUF_UnorderedAccess | BUF_ShaderResource | AdditionalUsage, CreateInfo);
+		SRV = RHICreateShaderResourceView(Buffer, BytesPerElement, Format);
+	}
+
+	void AcquireTransientResource()
+	{
+		RHIAcquireTransientResource(Buffer);
+	}
+	void DiscardTransientResource()
+	{
+		RHIDiscardTransientResource(Buffer);
+	}
+
+	void Release()
+	{
+		int32 BufferRefCount = Buffer ? Buffer->GetRefCount() : -1;
+
+		if (BufferRefCount == 1)
+		{
+			DiscardTransientResource();
+		}
+
+		NumBytes = 0;
+		Buffer.SafeRelease();
 		SRV.SafeRelease();
 	}
 };
@@ -168,6 +261,7 @@ struct FPMURWBufferStructured
         )
 	{
 		check(GMaxRHIFeatureLevel == ERHIFeatureLevel::SM5);
+
 		// Provide a debug name if using Fast VRAM so the allocators diagnostics will work
 		ensure(!((AdditionalUsage & BUF_FastVRAM) && !InDebugName));
 
