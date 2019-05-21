@@ -28,30 +28,46 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "PMUGridData.h"
+#include "RHIResources.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "Mesh/PMUMeshTypes.h"
+#include "PMUMeshUtility.generated.h"
 
-class IPMUGridHeightMapGenerator
+class UGWTTickEvent;
+class UPMUMeshComponent;
+
+UCLASS()
+class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibrary
 {
-protected:
-    virtual void GenerateHeightMapImpl(FPMUGridData& GridData, int32 MapId) = 0;
+	GENERATED_BODY()
 
 public:
 
-    virtual void Reset()
-    {
-    }
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Create Grid Mesh Section (GPU)", AdvancedDisplay="Bounds"))
+    static void CreateGridMeshSectionGPU(
+        UObject* WorldContextObject,
+        UPMUMeshComponent* MeshComponent,
+        int32 SectionIndex,
+        FBox Bounds,
+        int32 GridSizeX = 256,
+        int32 GridSizeY = 256,
+        bool bReverseWinding = false,
+        UTexture* HeightTexture = nullptr,
+        float HeightScale = 1.f,
+        bool bEnableCollision = false,
+        bool bCalculateBounds = true,
+        bool bUpdateRenderState = true,
+        UGWTTickEvent* CallbackEvent = nullptr
+        );
 
-    virtual void GenerateHeightMap(FPMUGridData& GridData, int32 MapId)
-    {
-        check(MapId >= 0);
-
-        // Create new one if specified height map index does not exist
-        if (! GridData.HasHeightMap(MapId))
-        {
-            GridData.CreateHeightMap(MapId);
-        }
-
-        // Generate height map
-        GenerateHeightMapImpl(GridData, MapId);
-    }
+    static void CreateGridMeshSectionGPU_RT(
+        FRHICommandListImmediate& RHICmdList,
+        ERHIFeatureLevel::Type FeatureLevel,
+        FPMUMeshSection& Section,
+        int32 GridSizeX,
+        int32 GridSizeY,
+        bool bReverseWinding,
+        const FTexture* HeightTexture,
+        float HeightScale
+        );
 };

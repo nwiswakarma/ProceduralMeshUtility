@@ -35,7 +35,7 @@ void UPMULineSimplifyUtility::SimplifyVisvalingam(const TArray<FVector2D>& Input
     Simplifier.simplify(AreaThreshold, Output);
 }
 
-void UPMULineSimplifyUtility::SimplifyLeaflet(TArray<FVector2D>& OutPoints, const TArray<FVector2D>& InPoints, float Tolerance /*= 1.0f*/, bool bHighestQuality /*= false*/)
+void UPMULineSimplifyUtility::SimplifyLeaflet(TArray<FVector2D>& OutPoints, const TArray<FVector2D>& InPoints, float Tolerance/*=1.0f*/, bool bHighestQuality/*=false*/)
 {
     UPMULineSimplifyLeaflet::Simplify(OutPoints, InPoints, Tolerance, bHighestQuality);
 }

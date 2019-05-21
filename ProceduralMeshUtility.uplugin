@@ -19,27 +19,11 @@
 	"Plugins":
     [
 		{
-			"Name" : "AGGPlugin",
-			"Enabled": true
-		},
-		{
-			"Name" : "AJClipperPlugin",
-			"Enabled": true
-		},
-		{
-			"Name" : "EarcutPlugin",
-			"Enabled": true
-		},
-		{
 			"Name" : "GenericWorkerThread",
 			"Enabled": true
 		},
 		{
-			"Name" : "JCVoronoiPlugin",
-			"Enabled": true
-		},
-		{
-			"Name" : "UnrealFastNoisePlugin",
+			"Name" : "RenderingUtilityLibrary",
 			"Enabled": true
 		}
 	]

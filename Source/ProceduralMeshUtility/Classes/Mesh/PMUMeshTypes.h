@@ -41,241 +41,10 @@ struct PROCEDURALMESHUTILITY_API FPMUPackedVertex
     FColor Color;
 };
 
-// Struct used to specify a tangent vector for a vertex
-// The Y tangent is computed from the cross product of the vertex normal (Tangent Z) and the TangentX member.
-USTRUCT(BlueprintType)
-struct PROCEDURALMESHUTILITY_API FPMUMeshTangent
+struct PROCEDURALMESHUTILITY_API FPMUMeshSectionResourceBuffer
 {
-	GENERATED_BODY()
-
-	// Direction of X tangent for this vertex
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Tangent)
-	FVector TangentX;
-
-	// Whether we should flip the Y tangent when we compute it using cross product
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Tangent)
-	bool bFlipTangentY;
-
-	FPMUMeshTangent()
-		: TangentX(1.f, 0.f, 0.f)
-		, bFlipTangentY(false)
-	{}
-
-	FPMUMeshTangent(float X, float Y, float Z)
-		: TangentX(X, Y, Z)
-		, bFlipTangentY(false)
-	{}
-
-	FPMUMeshTangent(FVector InTangentX, bool bInFlipTangentY)
-		: TangentX(InTangentX)
-		, bFlipTangentY(bInFlipTangentY)
-	{}
-};
-
-USTRUCT(BlueprintType)
-struct PROCEDURALMESHUTILITY_API FPMUMeshVertex
-{
-	GENERATED_BODY()
-
-	// Vertex position
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Vertex)
-	FVector Position;
-
-	// Vertex normal
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Vertex)
-	FVector Normal;
-
-	// Vertex color
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Vertex)
-	FVector2D UV0;
-
-	// Vertex color
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Vertex)
-	FColor Color;
-
-	FPMUMeshVertex()
-		: Position(0.f)
-		, Normal(0.f)
-		, Color(0, 0, 0)
-	{
-    }
-
-	FPMUMeshVertex(FVector InPosition)
-        : Position(InPosition)
-        , Normal(0.f)
-        , Color(0, 0, 0)
-    {
-    }
-
-	FPMUMeshVertex(FVector InPosition, FVector InNormal)
-        : Position(InPosition)
-        , Normal(InNormal)
-        , Color(0, 0, 0)
-    {
-    }
-
-	FPMUMeshVertex(FVector InPosition, FVector InNormal, FColor InColor)
-        : Position(InPosition)
-        , Normal(InNormal)
-        , Color(InColor)
-    {
-    }
-
-	FPMUMeshVertex(const FPMUMeshVertex& InVertex)
-        : Position(InVertex.Position)
-        , Normal(InVertex.Normal)
-        , Color(InVertex.Color)
-    {
-    }
-};
-
-USTRUCT(BlueprintType)
-struct PROCEDURALMESHUTILITY_API FPMUMeshSection
-{
-	GENERATED_BODY()
-
-	// Vertex buffer for this section
-	UPROPERTY(BlueprintReadWrite, Category=Section)
-	TArray<FPMUMeshVertex> VertexBuffer;
-
-	// Index buffer for this section
-	UPROPERTY(BlueprintReadWrite, Category=Section)
-	TArray<int32> IndexBuffer;
-
-	// Local bounding box of section
-	UPROPERTY(BlueprintReadWrite, Category=Section)
-	FBox LocalBox;
-
-	// Should we display this section
-	UPROPERTY(BlueprintReadWrite, Category=Section)
-	bool bUsePositionAsUV;
-
-	// Should we build collision data for triangles in this section
-	UPROPERTY(BlueprintReadWrite, Category=Section)
-	bool bEnableCollision;
-
-	// Should we display this section
-	UPROPERTY(BlueprintReadWrite, Category=Section)
-	bool bSectionVisible;
-
-	FPMUMeshSection()
-		: LocalBox(ForceInitToZero)
-		, bEnableCollision(false)
-		, bUsePositionAsUV(true)
-		, bSectionVisible(true)
-	{}
-
-	// Reset this section, clear all mesh info
-	void Reset()
-	{
-		VertexBuffer.Empty();
-		IndexBuffer.Empty();
-		LocalBox.Init();
-		bEnableCollision = false;
-		bUsePositionAsUV = true;
-		bSectionVisible = true;
-	}
-
-	void ClearGeometry()
-	{
-		VertexBuffer.Empty();
-		IndexBuffer.Empty();
-		LocalBox.Init();
-	}
-
-	void Shrink()
-	{
-		VertexBuffer.Shrink();
-		IndexBuffer.Shrink();
-    }
-
-    FORCEINLINE int32 GetVertexCount() const
-    {
-        return VertexBuffer.Num();
-    }
-};
-
-USTRUCT(BlueprintType)
-struct PROCEDURALMESHUTILITY_API FPMUMeshLOD
-{
-	GENERATED_BODY()
-
-	UPROPERTY(BlueprintReadWrite, Category=LOD)
-    TArray<FPMUMeshSection> Sections;
-
-	UPROPERTY()
-    TMap<uint64, int32> SectionMap;
-
-    FORCEINLINE bool HasSection(int32 SectionIndex) const
-    {
-        return Sections.IsValidIndex(SectionIndex);
-    }
-
-    FORCEINLINE bool HasMapped(uint64 MappedIndex) const
-    {
-        return SectionMap.Contains(MappedIndex) ? HasSection(SectionMap.FindChecked(MappedIndex)) : false;
-    }
-
-    FORCEINLINE FPMUMeshSection* GetSectionSafe(int32 SectionIndex)
-    {
-        return HasSection(SectionIndex) ? &GetSection(SectionIndex) : nullptr;
-    }
-
-    FORCEINLINE FPMUMeshSection* GetMappedSafe(uint64 MappedIndex)
-    {
-        return HasMapped(MappedIndex) ? &GetMapped(MappedIndex) : nullptr;
-    }
-
-    FORCEINLINE FPMUMeshSection& GetSection(int32 SectionIndex)
-    {
-        return Sections[SectionIndex];
-    }
-
-    FORCEINLINE FPMUMeshSection& GetMapped(uint64 MappedIndex)
-    {
-        return Sections[SectionMap.FindChecked(MappedIndex)];
-    }
-
-    FORCEINLINE int32 GetNumSections() const
-    {
-        return Sections.Num();
-    }
-
-    FORCEINLINE FBox GetLocalBounds() const
-    {
-        FBox LocalBox(ForceInitToZero);
-        
-        for (const FPMUMeshSection& Section : Sections)
-        {
-            LocalBox += Section.LocalBox;
-        }
-        
-        return LocalBox.IsValid ? LocalBox : FBox(FVector::ZeroVector, FVector::ZeroVector); // fallback to reset box sphere bounds
-    }
-
-    void ClearAllMeshSections()
-    {
-        Sections.Empty();
-        SectionMap.Empty();
-    }
-
-    void CreateMappedSections(const TArray<uint64>& SectionIds)
-    {
-        // Resize section container
-        Sections.SetNum(SectionIds.Num(), true);
-
-        // Map sections
-        for (int32 i=0; i<SectionIds.Num(); ++i)
-        {
-            SectionMap.Emplace(SectionIds[i], i);
-        }
-    }
-};
-
-struct FPMUMeshSectionResourceBuffer
-{
-    template<class FResourceType>
-    class TBufferResourceArray : public TResourceArray<FResourceType, VERTEXBUFFER_ALIGNMENT>
+    template<typename ElementType, uint32 Alignment = DEFAULT_ALIGNMENT>
+    class TBufferResourceArray : public TResourceArray<ElementType, Alignment>
     {
     public:
         virtual void Discard() override
@@ -289,13 +58,14 @@ struct FPMUMeshSectionResourceBuffer
         }
     };
 
+    typedef TBufferResourceArray<FPMUPackedVertex, VERTEXBUFFER_ALIGNMENT> FVertexResourceArray;
+    typedef TBufferResourceArray<uint32, INDEXBUFFER_ALIGNMENT> FIndexResourceArray;
+
     class FSectionVertexBuffer : public FVertexBuffer
     {
     public:
 
-        typedef TBufferResourceArray<FPMUPackedVertex> FResourceArray;
-
-        FResourceArray ResourceArray;
+        FVertexResourceArray ResourceArray;
 
         virtual void InitRHI() override
         {
@@ -308,9 +78,7 @@ struct FPMUMeshSectionResourceBuffer
     {
     public:
 
-        typedef TBufferResourceArray<uint32> FResourceArray;
-
-        FResourceArray ResourceArray;
+        FIndexResourceArray ResourceArray;
 
         virtual void InitRHI() override
         {
@@ -318,6 +86,11 @@ struct FPMUMeshSectionResourceBuffer
             IndexBufferRHI = RHICreateIndexBuffer(ResourceArray.GetTypeSize(), ResourceArray.GetResourceDataSize(), BUF_Static, CreateInfo);
         }
     };
+
+    FPMUMeshSectionResourceBuffer()
+        : bNeedsCPUAccess(false)
+    {
+    }
 
     FORCEINLINE FSectionVertexBuffer& GetVB()
     {
@@ -329,18 +102,45 @@ struct FPMUMeshSectionResourceBuffer
         return IndexBuffer;
     }
 
-    FORCEINLINE FSectionVertexBuffer::FResourceArray& GetVBArray()
+    FORCEINLINE FVertexResourceArray& GetVBArray()
     {
         return VertexBuffer.ResourceArray;
     }
 
-    FORCEINLINE FSectionIndexBuffer::FResourceArray& GetIBArray()
+    FORCEINLINE const FVertexResourceArray& GetVBArray() const
+    {
+        return VertexBuffer.ResourceArray;
+    }
+
+    FORCEINLINE FIndexResourceArray& GetIBArray()
     {
         return IndexBuffer.ResourceArray;
     }
 
+    FORCEINLINE const FIndexResourceArray& GetIBArray() const
+    {
+        return IndexBuffer.ResourceArray;
+    }
+
+	bool GetAllowCPUAccess() const
+	{
+		return bNeedsCPUAccess;
+	}
+
+	void SetAllowCPUAccess(bool bInNeedsCPUAccess)
+	{
+        if (bNeedsCPUAccess != bInNeedsCPUAccess)
+        {
+            GetVBArray().SetAllowCPUAccess(bInNeedsCPUAccess);
+            GetIBArray().SetAllowCPUAccess(bInNeedsCPUAccess);
+        }
+
+		bNeedsCPUAccess = bInNeedsCPUAccess;
+	}
+
 	FSectionVertexBuffer VertexBuffer;
 	FSectionIndexBuffer  IndexBuffer;
+    bool bNeedsCPUAccess;
 };
 
 USTRUCT(BlueprintType)
@@ -358,9 +158,9 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSectionResource
 	bool bSectionVisible;
 
 	FPMUMeshSectionResource()
-		: LocalBounds(ForceInitToZero)
-        , VertexCount(0)
+		: VertexCount(0)
         , IndexCount(0)
+        , LocalBounds(ForceInitToZero)
 		, bEnableCollision(false)
 		, bSectionVisible(true)
 	{
@@ -375,6 +175,16 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSectionResource
     {
         return IndexCount;
     }
+
+	bool GetAllowCPUAccess() const
+	{
+		return Buffer.GetAllowCPUAccess();
+	}
+
+	void SetAllowCPUAccess(bool bInNeedsCPUAccess)
+	{
+		Buffer.SetAllowCPUAccess(bInNeedsCPUAccess);
+	}
 };
 
 USTRUCT(BlueprintType)
@@ -395,6 +205,123 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSectionResourceRef
     }
 
     FORCEINLINE bool IsValid() const
+    {
+        return SectionPtr != nullptr;
+    }
+};
+
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUMeshSection
+{
+	GENERATED_USTRUCT_BODY()
+
+	/** Position buffer */
+	UPROPERTY()
+	TArray<FVector> Positions;
+
+	/** TangentX buffer */
+	UPROPERTY()
+	TArray<FVector> TangentsX;
+
+	/** TangentZ buffer */
+	UPROPERTY()
+	TArray<FVector> TangentsZ;
+
+	/** Packed Tangents buffer: TangentX = 2*i+0 and TangentZ = 2*i+1 */
+	UPROPERTY()
+	TArray<uint32> Tangents;
+
+	UPROPERTY()
+	TArray<uint64> Tangents2;
+
+	/** Texture coordinate buffer */
+	UPROPERTY()
+	TArray<FVector2D> UVs;
+
+	/** Color buffer */
+	UPROPERTY()
+	TArray<FColor> Colors;
+
+	/** Index buffer */
+	UPROPERTY()
+	TArray<uint32> Indices;
+
+	/** Local bounding box of section */
+	UPROPERTY()
+	FBox SectionLocalBox;
+
+	/** Should we build collision data for triangles in this section */
+	UPROPERTY()
+	bool bEnableCollision;
+
+	/** Should we display this section */
+	UPROPERTY()
+	bool bSectionVisible;
+
+	/** Enable fast UV copy if supported */
+	UPROPERTY()
+	bool bEnableFastUVCopy;
+
+	/** Enable fast tangents copy if supported */
+	UPROPERTY()
+	bool bEnableFastTangentsCopy;
+
+	/** Initialize invalid vertex data */
+	UPROPERTY()
+	bool bInitializeInvalidVertexData;
+
+	FPMUMeshSection()
+		: SectionLocalBox(ForceInitToZero)
+		, bEnableCollision(false)
+		, bSectionVisible(true)
+		, bEnableFastUVCopy(true)
+		, bEnableFastTangentsCopy(true)
+        , bInitializeInvalidVertexData(true)
+	{
+    }
+
+	/** Reset this section, clear all mesh info. */
+	void Reset()
+	{
+        Positions.Empty();
+        TangentsX.Empty();
+        TangentsZ.Empty();
+        Tangents.Empty();
+        UVs.Empty();
+        Colors.Empty();
+        Indices.Empty();
+
+		SectionLocalBox.Init();
+		bEnableCollision = false;
+		bSectionVisible = true;
+	}
+
+    FORCEINLINE bool HasGeometry() const
+    {
+        return Positions.Num() >= 3 && Indices.Num() >= 3;
+    }
+};
+
+typedef TSharedPtr<FPMUMeshSection, ESPMode::ThreadSafe> FPMUMeshSectionSharedRef;
+
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUMeshSectionRef
+{
+	GENERATED_BODY()
+
+	FPMUMeshSection* SectionPtr;
+
+	FPMUMeshSectionRef()
+        : SectionPtr(nullptr)
+    {
+    }
+
+	FPMUMeshSectionRef(FPMUMeshSection& Section)
+        : SectionPtr(&Section)
+    {
+    }
+
+    FORCEINLINE bool HasValidSection() const
     {
         return SectionPtr != nullptr;
     }

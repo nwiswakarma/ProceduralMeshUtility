@@ -47,22 +47,6 @@ public:
 	{
 		return true;
 	}
-
-	virtual TSharedPtr<class FGWTAsyncThreadPool> GetThreadPool() = 0;
-
-#ifdef PMU_VOXEL_USE_OCL
-
-	virtual bool HasGPUProgram(const FName& ProgramName) const = 0;
-	virtual TSharedPtr<class FOCLBProgram> GetGPUProgram(const FName& ProgramName) = 0;
-	virtual bool SetGPUProgram(const FName& ProgramName, TSharedRef<class FOCLBProgram> Program) = 0;
-	virtual bool RemoveGPUProgram(const FName& ProgramName) = 0;
-
-	virtual bool HasGPUProgramWeak(const FName& ProgramName) const = 0;
-	virtual TWeakPtr<class FOCLBProgram> GetGPUProgramWeak(const FName& ProgramName) const = 0;
-	virtual bool SetGPUProgramWeak(const FName& ProgramName, TSharedRef<class FOCLBProgram> Program, bool bOverwrite = false) = 0;
-	virtual bool RemoveGPUProgramWeak(const FName& ProgramName) = 0;
-
-#endif // PMU_VOXEL_USE_OCL
 };
 
 DECLARE_LOG_CATEGORY_EXTERN(LogPMU, Verbose, All);

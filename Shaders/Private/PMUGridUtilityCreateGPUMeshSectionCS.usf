@@ -33,27 +33,31 @@
 
 #include "/Engine/Private/Common.ush"
 
+#define POS_STRIDE 12
+#define TAN_STRIDE 8
 #define INDEX_PER_QUAD 6
-#define HEIGHT_SCALE   128.f
 
-#ifndef PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING
-#define PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING 0
+#ifndef PMU_MESH_UTILITY_CREATE_GRID_MESH_SECTION_USE_REVERSE_WINDING
+#define PMU_MESH_UTILITY_CREATE_GRID_MESH_SECTION_USE_REVERSE_WINDING 0
 #endif
 
-struct VertexType
-{
-	float3 Position;
-	float2 TextureCoordinate;
-	uint TangentX;
-	uint TangentZ;
-	uint Color;
-};
+//struct VertexType
+//{
+//	float3 Position;
+//	float2 TextureCoordinate;
+//	uint TangentX;
+//	uint TangentZ;
+//	uint Color;
+//};
 
-RWStructuredBuffer<VertexType> OutVertexData;
-RWBuffer<uint> OutIndexData;
+//RWStructuredBuffer<VertexType> OutVertexData;
+RWByteAddressBuffer OutPositionData;
+RWByteAddressBuffer OutTangentData;
+RWBuffer<float2>    OutTexCoordData;
+RWBuffer<uint>      OutIndexData;
 
-Texture2D HeightMap;
-SamplerState HeightMapSampler;
+Texture2D HeightTexture;
+SamplerState HeightTextureSampler;
 
 uint2 _Dimension;
 float _HeightScale;
@@ -78,6 +82,7 @@ void MainCS(uint3 tid : SV_DispatchThreadID)
 	}
 
     const uint Stride = _Dimension.x;
+    const uint VertexIndex = dot(VertexId, uint2(1, Stride));
 
     const uint2 QuadDim = _Dimension-1;
     const uint  QuadStride = QuadDim.x;
@@ -87,13 +92,25 @@ void MainCS(uint3 tid : SV_DispatchThreadID)
     const float3 uvo = { 1.f / QuadDim, 0 };
     const float2 uv  = float2(VertexId) * uvo;
 
+    float hv = Texture2DSample(HeightTexture, HeightTextureSampler, uv).x * _HeightScale;
+	uint ut = PackNormalizedFloat4(float4(1,0,0, 0));
+	uint un = PackNormalizedFloat4(float4(0,0,1, 1));
+    float3 pos = float3(VertexId, hv);
+
+    OutPositionData.Store3(VertexIndex*POS_STRIDE, asuint(pos));
+    OutTangentData.Store2(VertexIndex*TAN_STRIDE, uint2(ut, un));
+    OutTexCoordData[VertexIndex] = uv;
+
+// Construct height map vertex normal
+#if 0
+
     // Sample height values and calculate tangent vectors
 
-    float hv = Texture2DSample(HeightMap, HeightMapSampler, uv).x * _HeightScale;
-    float hN = Texture2DSample(HeightMap, HeightMapSampler, uv+uvo.zy).x * _HeightScale;
-    float hE = Texture2DSample(HeightMap, HeightMapSampler, uv+uvo.xz).x * _HeightScale;
-    float hW = Texture2DSample(HeightMap, HeightMapSampler, uv-uvo.xz).x * _HeightScale;
-    float hS = Texture2DSample(HeightMap, HeightMapSampler, uv-uvo.zy).x * _HeightScale;
+    float hv = Texture2DSample(HeightTexture, HeightTextureSampler, uv).x * _HeightScale;
+    float hN = Texture2DSample(HeightTexture, HeightTextureSampler, uv+uvo.zy).x * _HeightScale;
+    float hE = Texture2DSample(HeightTexture, HeightTextureSampler, uv+uvo.xz).x * _HeightScale;
+    float hW = Texture2DSample(HeightTexture, HeightTextureSampler, uv-uvo.xz).x * _HeightScale;
+    float hS = Texture2DSample(HeightTexture, HeightTextureSampler, uv-uvo.zy).x * _HeightScale;
     float2 hWESN = float2(hE, hN) - float2(hW, hS);
 
     float3 n = normalize(float3(-hWESN, 1));
@@ -104,7 +121,7 @@ void MainCS(uint3 tid : SV_DispatchThreadID)
     VertexType Vertex;
     Vertex.Position = float3(VertexId, hv);
 	Vertex.TextureCoordinate = VertexId;
-#if PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING
+#if PMU_MESH_UTILITY_CREATE_GRID_MESH_SECTION_USE_REVERSE_WINDING
 	Vertex.TangentX = PackNormalizedFloat4(float4(-t, 0));
 	Vertex.TangentZ = PackNormalizedFloat4(float4(-n, 1));
 #else
@@ -114,7 +131,9 @@ void MainCS(uint3 tid : SV_DispatchThreadID)
 	Vertex.Color = ~0;
 
     const uint VertexIndex = dot(VertexId, uint2(1, Stride));
-    OutVertexData[VertexIndex] = Vertex;
+    //OutVertexData[VertexIndex] = Vertex;
+
+#endif
 
     // Write index except on the last axis dimension threads
 
@@ -129,7 +148,7 @@ void MainCS(uint3 tid : SV_DispatchThreadID)
 
         const uint IndexOffset = dot(VertexId, uint2(1, QuadStride)) * INDEX_PER_QUAD;
 
-#if PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING
+#if PMU_MESH_UTILITY_CREATE_GRID_MESH_SECTION_USE_REVERSE_WINDING
         OutIndexData[IndexOffset  ] = ids[0];
         OutIndexData[IndexOffset+1] = ids[1];
         OutIndexData[IndexOffset+2] = ids[3];

@@ -26,60 +26,43 @@
 //
 
 using System.IO;
-using System.Collections;
-using UnrealBuildTool;
 
-public class ProceduralMeshUtility: ModuleRules
+namespace UnrealBuildTool.Rules
 {
-    public ProceduralMeshUtility(ReadOnlyTargetRules Target) : base(Target)
+    public class ProceduralMeshUtility: ModuleRules
     {
-        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+        public ProceduralMeshUtility(ReadOnlyTargetRules Target) : base(Target)
+        {
+            PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        //PublicDefinitions.Add("PMU_SUBSTANCE_ENABLED");
-        //PublicDefinitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_HEAP_CONSISTENCY");
-        PublicDefinitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_INSTANCE_MEMORY");
+            // Get the engine path. Ends with "Engine/"
+            //string EnginePath = Path.GetFullPath(Target.RelativeEnginePath);
 
-        // Get the engine path. Ends with "Engine/"
-        string EnginePath = Path.GetFullPath(Target.RelativeEnginePath);
+            //PublicDefinitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_HEAP_CONSISTENCY");
+            PublicDefinitions.Add("PMU_LINE_SIMPLIFY_VIS_CHECK_INSTANCE_MEMORY");
 
-        PrivateIncludePaths.AddRange(
-            new string[] {
-                Path.Combine(ModuleDirectory, "Private/Line/Simplify/ThirdParty/Leaflet"),
-                Path.Combine(ModuleDirectory, "Private/Line/Simplify/ThirdParty/Visvalingam")
-            } );
+            PrivateIncludePaths.AddRange(
+                new string[] {
+                    Path.Combine(ModuleDirectory, "Private/Line/Simplify/ThirdParty/Leaflet"),
+                    Path.Combine(ModuleDirectory, "Private/Line/Simplify/ThirdParty/Visvalingam")
+                } );
 
-        PublicDependencyModuleNames.AddRange(
-            new string[] {
-                "Core",
-                "CoreUObject",
-                "Engine",
-                "RHI",
-                "RenderCore",
-                "ShaderCore",
-                "Renderer",
-                "ImageWrapper",
-                "GenericWorkerThread"
-            } );
+            PublicDependencyModuleNames.AddRange(
+                new string[] {
+                    "Core",
+                    "CoreUObject",
+                    "Engine",
+                    "RHI",
+                    "RenderCore",
+                    "Renderer"
+                } );
 
-        PrivateDependencyModuleNames.AddRange(
-            new string[] {
-                "Projects",
-                "UtilityShaders",
-                "AGGPlugin",
-                "AJClipperPlugin",
-                "EarcutPlugin",
-                "JCVoronoiPlugin",
-                "UnrealFastNoisePlugin"
-                //"SubstanceCore"
-            } );
-
-        string ThirdPartyPath = Path.Combine(ModuleDirectory, "../../ThirdParty");
-
-        // -- par library include and lib path
-
-        //string OCLPath = Path.Combine(ThirdPartyPath, "par");
-        //string OCLInclude = Path.Combine(OCLPath, "Include");
-
-		//PrivateIncludePaths.Add(Path.GetFullPath(OCLInclude));
+            PrivateDependencyModuleNames.AddRange(
+                new string[] {
+                    "Projects",
+                    "GenericWorkerThread",
+                    "RenderingUtilityLibrary"
+                } );
+        }
     }
 }
