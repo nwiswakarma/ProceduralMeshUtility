@@ -216,30 +216,27 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSection
 	GENERATED_USTRUCT_BODY()
 
 	/** Position buffer */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TArray<FVector> Positions;
 
 	/** TangentX buffer */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TArray<FVector> TangentsX;
 
 	/** TangentZ buffer */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TArray<FVector> TangentsZ;
 
 	/** Packed Tangents buffer: TangentX = 2*i+0 and TangentZ = 2*i+1 */
 	UPROPERTY()
 	TArray<uint32> Tangents;
 
-	UPROPERTY()
-	TArray<uint64> Tangents2;
-
 	/** Texture coordinate buffer */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TArray<FVector2D> UVs;
 
 	/** Color buffer */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	TArray<FColor> Colors;
 
 	/** Index buffer */
@@ -247,27 +244,27 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSection
 	TArray<uint32> Indices;
 
 	/** Local bounding box of section */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	FBox SectionLocalBox;
 
 	/** Should we build collision data for triangles in this section */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	bool bEnableCollision;
 
 	/** Should we display this section */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	bool bSectionVisible;
 
 	/** Enable fast UV copy if supported */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	bool bEnableFastUVCopy;
 
 	/** Enable fast tangents copy if supported */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	bool bEnableFastTangentsCopy;
 
 	/** Initialize invalid vertex data */
-	UPROPERTY()
+	UPROPERTY(BlueprintReadWrite)
 	bool bInitializeInvalidVertexData;
 
 	FPMUMeshSection()
