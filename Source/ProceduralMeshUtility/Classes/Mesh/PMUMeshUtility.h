@@ -35,6 +35,7 @@
 
 class UGWTTickEvent;
 class UPMUMeshComponent;
+class FPMUMeshProxySection;
 
 UCLASS()
 class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibrary
@@ -69,5 +70,48 @@ public:
         bool bReverseWinding,
         const FTexture* HeightTexture,
         float HeightScale
+        );
+
+    UFUNCTION(BlueprintCallable)
+    static void AssignHeightMapToMeshSection(
+        UObject* WorldContextObject,
+        UPMUMeshComponent* MeshComponent,
+        int32 SectionIndex,
+        UTexture* HeightTexture = nullptr,
+        float HeightScale = 1.f,
+        bool bUseUV = false,
+        float PositionToUVScaleX = 1.f,
+        float PositionToUVScaleY = 1.f,
+        bool bMaskByColor = true,
+        bool bInverseColorMask = false,
+        UGWTTickEvent* CallbackEvent = nullptr
+        );
+
+    UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="bUseUV,PositionToUVScaleX,PositionToUVScaleY,bMaskByColor,bInverseColorMask,CallbackEvent"))
+    static void AssignHeightMapToMeshSectionMulti(
+        UObject* WorldContextObject,
+        UPMUMeshComponent* MeshComponent,
+        TArray<int32> SectionIndices,
+        UTexture* HeightTexture = nullptr,
+        float HeightScale = 1.f,
+        bool bUseUV = false,
+        float PositionToUVScaleX = 1.f,
+        float PositionToUVScaleY = 1.f,
+        bool bMaskByColor = true,
+        bool bInverseColorMask = false,
+        UGWTTickEvent* CallbackEvent = nullptr
+        );
+
+    static void AssignHeightMapToMeshSection_RT(
+        FRHICommandListImmediate& RHICmdList,
+        ERHIFeatureLevel::Type FeatureLevel,
+        const TArray<FPMUMeshProxySection*>& Sections,
+        const FTexture& HeightTexture,
+        float HeightScale,
+        bool bUseUV,
+        float PositionToUVScaleX,
+        float PositionToUVScaleY,
+        bool bMaskByColor,
+        bool bInverseColorMask
         );
 };

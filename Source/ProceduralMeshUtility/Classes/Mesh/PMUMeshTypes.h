@@ -41,175 +41,6 @@ struct PROCEDURALMESHUTILITY_API FPMUPackedVertex
     FColor Color;
 };
 
-struct PROCEDURALMESHUTILITY_API FPMUMeshSectionResourceBuffer
-{
-    template<typename ElementType, uint32 Alignment = DEFAULT_ALIGNMENT>
-    class TBufferResourceArray : public TResourceArray<ElementType, Alignment>
-    {
-    public:
-        virtual void Discard() override
-        {
-            // TResourceArray<>::Discard() only discard array content if not in editor or commandlet,
-            // override to always discard if cpu access is not required
-            if (! GetAllowCPUAccess())
-            {
-                Empty();
-            }
-        }
-    };
-
-    typedef TBufferResourceArray<FPMUPackedVertex, VERTEXBUFFER_ALIGNMENT> FVertexResourceArray;
-    typedef TBufferResourceArray<uint32, INDEXBUFFER_ALIGNMENT> FIndexResourceArray;
-
-    class FSectionVertexBuffer : public FVertexBuffer
-    {
-    public:
-
-        FVertexResourceArray ResourceArray;
-
-        virtual void InitRHI() override
-        {
-            FRHIResourceCreateInfo CreateInfo(&ResourceArray);
-            VertexBufferRHI = RHICreateVertexBuffer(ResourceArray.GetResourceDataSize(), BUF_Static, CreateInfo);
-        }
-    };
-
-    class FSectionIndexBuffer : public FIndexBuffer
-    {
-    public:
-
-        FIndexResourceArray ResourceArray;
-
-        virtual void InitRHI() override
-        {
-            FRHIResourceCreateInfo CreateInfo(&ResourceArray);
-            IndexBufferRHI = RHICreateIndexBuffer(ResourceArray.GetTypeSize(), ResourceArray.GetResourceDataSize(), BUF_Static, CreateInfo);
-        }
-    };
-
-    FPMUMeshSectionResourceBuffer()
-        : bNeedsCPUAccess(false)
-    {
-    }
-
-    FORCEINLINE FSectionVertexBuffer& GetVB()
-    {
-        return VertexBuffer;
-    }
-
-    FORCEINLINE FSectionIndexBuffer& GetIB()
-    {
-        return IndexBuffer;
-    }
-
-    FORCEINLINE FVertexResourceArray& GetVBArray()
-    {
-        return VertexBuffer.ResourceArray;
-    }
-
-    FORCEINLINE const FVertexResourceArray& GetVBArray() const
-    {
-        return VertexBuffer.ResourceArray;
-    }
-
-    FORCEINLINE FIndexResourceArray& GetIBArray()
-    {
-        return IndexBuffer.ResourceArray;
-    }
-
-    FORCEINLINE const FIndexResourceArray& GetIBArray() const
-    {
-        return IndexBuffer.ResourceArray;
-    }
-
-	bool GetAllowCPUAccess() const
-	{
-		return bNeedsCPUAccess;
-	}
-
-	void SetAllowCPUAccess(bool bInNeedsCPUAccess)
-	{
-        if (bNeedsCPUAccess != bInNeedsCPUAccess)
-        {
-            GetVBArray().SetAllowCPUAccess(bInNeedsCPUAccess);
-            GetIBArray().SetAllowCPUAccess(bInNeedsCPUAccess);
-        }
-
-		bNeedsCPUAccess = bInNeedsCPUAccess;
-	}
-
-	FSectionVertexBuffer VertexBuffer;
-	FSectionIndexBuffer  IndexBuffer;
-    bool bNeedsCPUAccess;
-};
-
-USTRUCT(BlueprintType)
-struct PROCEDURALMESHUTILITY_API FPMUMeshSectionResource
-{
-	GENERATED_BODY()
-
-	FPMUMeshSectionResourceBuffer Buffer;
-
-    int32 VertexCount;
-    int32 IndexCount;
-
-	FBox LocalBounds;
-	bool bEnableCollision;
-	bool bSectionVisible;
-
-	FPMUMeshSectionResource()
-		: VertexCount(0)
-        , IndexCount(0)
-        , LocalBounds(ForceInitToZero)
-		, bEnableCollision(false)
-		, bSectionVisible(true)
-	{
-    }
-
-    FORCEINLINE int32 GetVertexCount() const
-    {
-        return VertexCount;
-    }
-
-    FORCEINLINE int32 GetIndexCount() const
-    {
-        return IndexCount;
-    }
-
-	bool GetAllowCPUAccess() const
-	{
-		return Buffer.GetAllowCPUAccess();
-	}
-
-	void SetAllowCPUAccess(bool bInNeedsCPUAccess)
-	{
-		Buffer.SetAllowCPUAccess(bInNeedsCPUAccess);
-	}
-};
-
-USTRUCT(BlueprintType)
-struct PROCEDURALMESHUTILITY_API FPMUMeshSectionResourceRef
-{
-	GENERATED_BODY()
-
-	FPMUMeshSectionResource* SectionPtr;
-
-	FPMUMeshSectionResourceRef()
-        : SectionPtr(nullptr)
-    {
-    }
-
-	FPMUMeshSectionResourceRef(FPMUMeshSectionResource& Section)
-        : SectionPtr(&Section)
-    {
-    }
-
-    FORCEINLINE bool IsValid() const
-    {
-        return SectionPtr != nullptr;
-    }
-};
-
 USTRUCT(BlueprintType)
 struct PROCEDURALMESHUTILITY_API FPMUMeshSection
 {
@@ -299,7 +130,7 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSection
     }
 };
 
-typedef TSharedPtr<FPMUMeshSection, ESPMode::ThreadSafe> FPMUMeshSectionSharedRef;
+typedef TSharedPtr<FPMUMeshSection, ESPMode::ThreadSafe> FPMUMeshSectionShared;
 
 USTRUCT(BlueprintType)
 struct PROCEDURALMESHUTILITY_API FPMUMeshSectionRef
@@ -321,5 +152,18 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSectionRef
     FORCEINLINE bool HasValidSection() const
     {
         return SectionPtr != nullptr;
+    }
+};
+
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUMeshSectionSharedRef
+{
+	GENERATED_BODY()
+
+	FPMUMeshSectionShared Section;
+
+    FORCEINLINE bool HasValidSection() const
+    {
+        return Section.IsValid();
     }
 };

@@ -96,23 +96,11 @@ public:
 	virtual bool WantsNegXTriMesh() override{ return false; }
 	//~ End Interface_CollisionDataProvider Interface
 
+	FPMUMeshSceneProxy* GetSceneProxy();
+
 	/** Request render state update */
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
 	void UpdateRenderState();
-
-	/** Resizes section resource containers to hold at least the specified count */
-	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
-	void SetNumSectionResources(int32 SectionCount, bool bAllowShrinking = true);
-
-	/** Assign a mesh section resource */
-	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
-	void SetSectionResource(int32 SectionIndex, const FPMUMeshSectionResource& Section, bool bUpdateRenderState = true);
-
-	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh", meta=(DisplayName="Create Section Geometry Buffers (Simple)"))
-	void CreateSectionFromGeometryBuffers(int32 SectionIndex, const TArray<FVector>& Positions, const TArray<FVector>& Normals, const TArray<int32>& Indices);
-
-	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh", meta=(DisplayName="Create Section From Section Resource"))
-	void CreateSectionFromSectionResource(int32 SectionIndex, const FPMUMeshSectionResourceRef& Section, bool bCreateCollision = false, bool bCalculateBounds = false);
 
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh", meta=(DisplayName="Create Section From Section Reference"))
 	void CreateSectionFromSectionRef(int32 SectionIndex, const FPMUMeshSectionRef& Section);
@@ -159,11 +147,25 @@ public:
 
 	/** Returns whether a particular section is currently visible */
 	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")
+	bool IsValidSection(int32 SectionIndex) const;
+
+	/** Returns whether a particular section is currently visible */
+	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")
+	bool IsValidNonEmptySection(int32 SectionIndex) const;
+
+	/** Returns whether a particular section is currently visible */
+	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")
 	bool IsSectionVisible(int32 SectionIndex) const;
 
 	/** Returns number of sections currently created for this component */
 	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")
 	int32 GetNumSections() const;
+
+	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
+	FPMUMeshSectionRef GetSectionRef(int32 SectionIndex);
+
+	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
+	void GetAllNonEmptySectionIndices(TArray<int32>& SectionIndices);
 
 	/** Add simple collision convex to this component */
 	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")
@@ -178,10 +180,6 @@ private:
 	/** Array of sections of mesh */
 	UPROPERTY()
 	TArray<FPMUMeshSection> Sections;
-
-	/** Array of sections of mesh (section resource) */
-	UPROPERTY()
-	TArray<FPMUMeshSectionResource> SectionResources;
 
 	/** Local space bounds of mesh */
 	UPROPERTY()

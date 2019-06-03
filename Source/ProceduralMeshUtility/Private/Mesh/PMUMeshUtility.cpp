@@ -38,15 +38,16 @@
 #include "Shaders/RULShaderDefinitions.h"
 
 #include "ProceduralMeshUtility.h"
+#include "Mesh/PMUMeshSceneProxy.h"
 
 template<uint32 bReverseWinding>
-class FPMUMeshUtilityCreateGridMeshSectionCS : public FRULBaseComputeShader<16,16,1>
+class TPMUMeshUtilityCreateGridMeshSectionCS : public FRULBaseComputeShader<16,16,1>
 {
 public:
 
     typedef FRULBaseComputeShader<16,16,1> FBaseType;
 
-    DECLARE_SHADER_TYPE(FPMUMeshUtilityCreateGridMeshSectionCS, Global);
+    DECLARE_SHADER_TYPE(TPMUMeshUtilityCreateGridMeshSectionCS, Global);
 
 public:
 
@@ -61,7 +62,7 @@ public:
         OutEnvironment.SetDefine(TEXT("PMU_GRID_UTILITY_CREATE_GPU_MESH_SECTION_USE_REVERSE_WINDING"), bReverseWinding);
     }
 
-    RUL_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(FPMUMeshUtilityCreateGridMeshSectionCS)
+    RUL_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMeshUtilityCreateGridMeshSectionCS)
 
     RUL_DECLARE_SHADER_PARAMETERS_1(
         Texture,
@@ -99,8 +100,85 @@ public:
         )
 };
 
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMeshUtilityCreateGridMeshSectionCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUGridUtilityCreateGPUMeshSectionCS.usf"), TEXT("MainCS"), SF_Compute);
-IMPLEMENT_SHADER_TYPE(template<>, FPMUMeshUtilityCreateGridMeshSectionCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUGridUtilityCreateGPUMeshSectionCS.usf"), TEXT("MainCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityCreateGridMeshSectionCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUGridUtilityCreateGPUMeshSectionCS.usf"), TEXT("MainCS"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityCreateGridMeshSectionCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUGridUtilityCreateGPUMeshSectionCS.usf"), TEXT("MainCS"), SF_Compute);
+
+template<uint32 CompileFlags>
+class TPMUMeshUtilityAssignHeightMapToMeshSectionCS : public FRULBaseComputeShader<256,1,1>
+{
+public:
+
+    typedef FRULBaseComputeShader<256,1,1> FBaseType;
+
+    DECLARE_SHADER_TYPE(TPMUMeshUtilityAssignHeightMapToMeshSectionCS, Global);
+
+public:
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return RHISupportsComputeShaders(Parameters.Platform);
+    }
+
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+    {
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+        const uint32 UseUVBuffer  = ((CompileFlags&0x01) > 0) ? 1 : 0;
+        const uint32 UseColorMask = ((CompileFlags&0x02) > 0) ? 1 : 0;
+        OutEnvironment.SetDefine(TEXT("PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER"), UseUVBuffer);
+        OutEnvironment.SetDefine(TEXT("PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_COLOR_BUFFER_MASK"), UseColorMask);
+    }
+
+    RUL_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMeshUtilityAssignHeightMapToMeshSectionCS)
+
+    RUL_DECLARE_SHADER_PARAMETERS_1(
+        Texture,
+        FShaderResourceParameter,
+        FResourceId,
+        "HeightTexture", HeightTexture
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_1(
+        Sampler,
+        FShaderResourceParameter,
+        FResourceId,
+        "HeightTextureSampler", HeightTextureSampler
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_2(
+        SRV,
+        FShaderResourceParameter,
+        FResourceId,
+        "ColorData", ColorData,
+        "UVData", UVData
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_1(
+        UAV,
+        FShaderResourceParameter,
+        FResourceId,
+        "OutPositionData", OutPositionData
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_4(
+        Value,
+        FShaderParameter,
+        FParameterId,
+        "_VertexCount", Params_VertexCount,
+        "_HeightScale", Params_HeightScale,
+        "_InverseMask", Params_InverseMask,
+        "_PositionToUVScale", Params_PositionToUVScale
+        )
+};
+
+#define IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(FLAGS)\
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityAssignHeightMapToMeshSectionCS<FLAGS>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityAssignHeightMapToMeshSectionCS.usf"), TEXT("AssignSingleCS"), SF_Compute);
+
+IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(0)
+IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(1)
+IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(2)
+IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(3)
+
+#undef IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS
 
 void UPMUMeshUtility::CreateGridMeshSectionGPU(
     UObject* WorldContextObject,
@@ -185,7 +263,7 @@ void UPMUMeshUtility::CreateGridMeshSectionGPU(
             bool bEnableCollision = RenderParameter.bEnableCollision;
             bool bCalculateBounds = RenderParameter.bCalculateBounds;
 
-            FPMUMeshSectionSharedRef SectionRef(new FPMUMeshSection);
+            FPMUMeshSectionShared SectionRef(new FPMUMeshSection);
             SectionRef->bSectionVisible = true;
             SectionRef->bEnableFastUVCopy = true;
             SectionRef->bEnableFastTangentsCopy = true;
@@ -282,15 +360,15 @@ void UPMUMeshUtility::CreateGridMeshSectionGPU_RT(
         FTextureRHIParamRef HeightTextureParam = HeightTexture ? HeightTexture->TextureRHI : nullptr;
         FSamplerStateRHIParamRef SamplerLinearClamp = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
 
-        FPMUMeshUtilityCreateGridMeshSectionCS<0>::FBaseType* ComputeShader;
+        TPMUMeshUtilityCreateGridMeshSectionCS<0>::FBaseType* ComputeShader;
 
         if (bReverseWinding)
         {
-            ComputeShader = *TShaderMapRef<FPMUMeshUtilityCreateGridMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel));
+            ComputeShader = *TShaderMapRef<TPMUMeshUtilityCreateGridMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel));
         }
         else
         {
-            ComputeShader = *TShaderMapRef<FPMUMeshUtilityCreateGridMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel));
+            ComputeShader = *TShaderMapRef<TPMUMeshUtilityCreateGridMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel));
         }
 
         ComputeShader->SetShader(RHICmdList);
@@ -343,4 +421,369 @@ void UPMUMeshUtility::CreateGridMeshSectionGPU_RT(
     TexCoordData.Unlock();
     TangentData.Unlock();
     PositionData.Unlock();
+}
+
+void UPMUMeshUtility::AssignHeightMapToMeshSection(
+    UObject* WorldContextObject,
+    UPMUMeshComponent* MeshComponent,
+    int32 SectionIndex,
+    UTexture* HeightTexture,
+    float HeightScale,
+    bool bUseUV,
+    float PositionToUVScaleX,
+    float PositionToUVScaleY,
+    bool bMaskByColor,
+    bool bInverseColorMask,
+    UGWTTickEvent* CallbackEvent
+    )
+{
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+
+    if (! IsValid(World))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        return;
+    }
+    else
+    if (! World->Scene)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID WORLD SCENE"));
+        return;
+    }
+    else
+    if (! IsValid(MeshComponent))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID MESH COMPONENT"));
+        return;
+    }
+    else
+    if (! MeshComponent->IsValidNonEmptySection(SectionIndex))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID MESH SECTION"));
+        return;
+    }
+    else
+    if (! IsValid(HeightTexture))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID HEIGHT TEXTURE"));
+        return;
+    }
+
+    struct FRenderParameter
+    {
+        ERHIFeatureLevel::Type FeatureLevel;
+        // Height Map
+        const FTexture* HeightTexture;
+        float HeightScale;
+        // Mesh Construction
+        FPMUMeshSceneProxy* SceneProxy;
+        int32 SectionIndex;
+        // Buffer Setup
+        bool bUseUV;
+        float PositionToUVScaleX;
+        float PositionToUVScaleY;
+        bool bMaskByColor;
+        bool bInverseColorMask;
+        // Callback Event
+        UGWTTickEvent* CallbackEvent;
+    };
+
+    FRenderParameter RenderParameter = {
+        World->Scene->GetFeatureLevel(),
+        // Height Map
+        HeightTexture->Resource,
+        HeightScale,
+        // Mesh Construction
+        MeshComponent->GetSceneProxy(),
+        SectionIndex,
+        // Buffer Setup
+        bUseUV,
+        PositionToUVScaleX,
+        PositionToUVScaleY,
+        bMaskByColor,
+        bInverseColorMask,
+        // Callback Event
+        CallbackEvent
+        };
+
+    ENQUEUE_RENDER_COMMAND(PMUMeshUtility_AssignHeightMapToMeshSection)(
+        [RenderParameter](FRHICommandListImmediate& RHICmdList)
+        {
+            FPMUMeshSceneProxy* SceneProxy(RenderParameter.SceneProxy);
+            int32 SectionIndex = RenderParameter.SectionIndex;
+
+            if (! SceneProxy)
+            {
+                UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, [RT] INVALID SCENE PROXY"));
+                return;
+            }
+
+            FPMUMeshProxySection* Section = SceneProxy->GetSection(SectionIndex);
+
+            if (! Section)
+            {
+                UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, [RT] INVALID SECTION"));
+                return;
+            }
+
+            if (! RenderParameter.HeightTexture)
+            {
+                return;
+            }
+
+            TArray<FPMUMeshProxySection*> Sections;
+            Sections.Emplace(Section);
+
+            AssignHeightMapToMeshSection_RT(
+                RHICmdList,
+                RenderParameter.FeatureLevel,
+                Sections,
+                *RenderParameter.HeightTexture,
+                RenderParameter.HeightScale,
+                RenderParameter.bUseUV,
+                RenderParameter.PositionToUVScaleX,
+                RenderParameter.PositionToUVScaleY,
+                RenderParameter.bMaskByColor,
+                RenderParameter.bInverseColorMask
+                );
+
+            FGWTTickEventRef(RenderParameter.CallbackEvent).EnqueueCallback();
+        }
+    );
+}
+
+void UPMUMeshUtility::AssignHeightMapToMeshSectionMulti(
+    UObject* WorldContextObject,
+    UPMUMeshComponent* MeshComponent,
+    TArray<int32> SectionIndices,
+    UTexture* HeightTexture,
+    float HeightScale,
+    bool bUseUV,
+    float PositionToUVScaleX,
+    float PositionToUVScaleY,
+    bool bMaskByColor,
+    bool bInverseColorMask,
+    UGWTTickEvent* CallbackEvent
+    )
+{
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+
+    if (! IsValid(World))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        return;
+    }
+    else
+    if (! World->Scene)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID WORLD SCENE"));
+        return;
+    }
+    else
+    if (! IsValid(MeshComponent))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID MESH COMPONENT"));
+        return;
+    }
+    else
+    if (! IsValid(HeightTexture))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID HEIGHT TEXTURE"));
+        return;
+    }
+
+    TArray<int32> FilteredSectionIndices;
+
+    for (int32 i : SectionIndices)
+    {
+        if (MeshComponent->IsValidNonEmptySection(i))
+        {
+            FilteredSectionIndices.Emplace(i);
+        }
+    }
+
+    if (FilteredSectionIndices.Num() < 1)
+    {
+        return;
+    }
+
+    struct FRenderParameter
+    {
+        ERHIFeatureLevel::Type FeatureLevel;
+        // Height Map
+        const FTexture* HeightTexture;
+        float HeightScale;
+        // Mesh Construction
+        FPMUMeshSceneProxy* SceneProxy;
+        TArray<int32> SectionIndices;
+        // Buffer Setup
+        bool bUseUV;
+        float PositionToUVScaleX;
+        float PositionToUVScaleY;
+        bool bMaskByColor;
+        bool bInverseColorMask;
+        // Callback Event
+        UGWTTickEvent* CallbackEvent;
+    };
+
+    FRenderParameter RenderParameter = {
+        World->Scene->GetFeatureLevel(),
+        // Height Map
+        HeightTexture->Resource,
+        HeightScale,
+        // Mesh Construction
+        MeshComponent->GetSceneProxy(),
+        FilteredSectionIndices,
+        // Buffer Setup
+        bUseUV,
+        PositionToUVScaleX,
+        PositionToUVScaleY,
+        bMaskByColor,
+        bInverseColorMask,
+        // Callback Event
+        CallbackEvent
+        };
+
+    ENQUEUE_RENDER_COMMAND(PMUMeshUtility_AssignHeightMapToMeshSectionMulti)(
+        [RenderParameter](FRHICommandListImmediate& RHICmdList)
+        {
+            FPMUMeshSceneProxy* SceneProxy(RenderParameter.SceneProxy);
+            TArray<FPMUMeshProxySection*> Sections;
+
+            if (! SceneProxy)
+            {
+                UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, [RT] INVALID SCENE PROXY"));
+                return;
+            }
+            else
+            if (! RenderParameter.HeightTexture)
+            {
+                return;
+            }
+
+            for (int32 i : RenderParameter.SectionIndices)
+            {
+                FPMUMeshProxySection* Section = SceneProxy->GetSection(i);
+
+                if (Section)
+                {
+                    Sections.Emplace(Section);
+                }
+            }
+
+            if (Sections.Num() > 0)
+            {
+                AssignHeightMapToMeshSection_RT(
+                    RHICmdList,
+                    RenderParameter.FeatureLevel,
+                    Sections,
+                    *RenderParameter.HeightTexture,
+                    RenderParameter.HeightScale,
+                    RenderParameter.bUseUV,
+                    RenderParameter.PositionToUVScaleX,
+                    RenderParameter.PositionToUVScaleY,
+                    RenderParameter.bMaskByColor,
+                    RenderParameter.bInverseColorMask
+                    );
+            }
+
+            FGWTTickEventRef(RenderParameter.CallbackEvent).EnqueueCallback();
+        }
+    );
+}
+
+void UPMUMeshUtility::AssignHeightMapToMeshSection_RT(
+    FRHICommandListImmediate& RHICmdList,
+    ERHIFeatureLevel::Type FeatureLevel,
+    const TArray<FPMUMeshProxySection*>& Sections,
+    const FTexture& HeightTexture,
+    float HeightScale,
+    bool bUseUV,
+    float PositionToUVScaleX,
+    float PositionToUVScaleY,
+    bool bMaskByColor,
+    bool bInverseColorMask
+    )
+{
+    FTextureRHIParamRef HeightTextureParam = HeightTexture.TextureRHI;
+
+    if (! HeightTextureParam || Sections.Num() < 1)
+    {
+        return;
+    }
+
+    const int32 SectionCount = Sections.Num();
+
+    for (int32 i=0; i<SectionCount; ++i)
+    {
+        FPMUMeshProxySection& Section(*Sections[i]);
+        FPMUPositionVertexBuffer& PositionBuffer(Section.PositionVertexBuffer);
+        FPMUColorVertexBuffer& ColorBuffer(Section.ColorVertexBuffer);
+        auto& UVBuffer(Section.StaticMeshVertexBuffer.TexCoordVertexBuffer);
+
+        check(PositionBuffer.IsInitialized());
+
+        const FUnorderedAccessViewRHIParamRef PositionUAV = PositionBuffer.GetUAV();
+        FShaderResourceViewRHIRef UVSRV;
+
+        if (! PositionUAV)
+        {
+            return;
+        }
+
+        const uint32 NumVertices = PositionBuffer.GetNumVertices();
+
+        RHICmdList.BeginComputePass(TEXT("AssignHeightMapToMeshSection"));
+        {
+            FSamplerStateRHIParamRef TextureSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
+
+            FVector2D PositionToUVScale = FVector2D::UnitVector;
+            PositionToUVScale.X = PositionToUVScaleX;
+            PositionToUVScale.Y = PositionToUVScaleY;
+
+            TPMUMeshUtilityAssignHeightMapToMeshSectionCS<0>::FBaseType* ComputeShader;
+
+            if (bUseUV && bMaskByColor)
+            {
+                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<3>>(GetGlobalShaderMap(FeatureLevel));
+            }
+            else
+            if (bUseUV)
+            {
+                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel));
+            }
+            else
+            if (bMaskByColor)
+            {
+                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<2>>(GetGlobalShaderMap(FeatureLevel));
+            }
+            else
+            {
+                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel));
+            }
+
+            ComputeShader->SetShader(RHICmdList);
+            ComputeShader->BindTexture(RHICmdList, TEXT("HeightTexture"), TEXT("HeightTextureSampler"), HeightTextureParam, TextureSampler);
+            ComputeShader->BindUAV(RHICmdList, TEXT("OutPositionData"), PositionUAV);
+            ComputeShader->SetParameter(RHICmdList, TEXT("_VertexCount"), NumVertices);
+            ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"), HeightScale);
+            ComputeShader->SetParameter(RHICmdList, TEXT("_PositionToUVScale"), PositionToUVScale);
+
+            if (bUseUV)
+            {
+                UVSRV = RHICreateShaderResourceView(UVBuffer.VertexBufferRHI, 8, PF_G32R32F);
+                ComputeShader->BindSRV(RHICmdList, TEXT("UVData"), UVSRV);
+            }
+
+            if (bMaskByColor)
+            {
+                const FShaderResourceViewRHIParamRef ColorSRV = ColorBuffer.GetColorComponentsSRV();
+                ComputeShader->BindSRV(RHICmdList, TEXT("ColorData"), ColorSRV);
+                ComputeShader->SetParameter(RHICmdList, TEXT("_InverseMask"), bInverseColorMask ? 1.f : 0.f);
+            }
+
+            ComputeShader->DispatchAndClear(RHICmdList, NumVertices, 1, 1);
+        }
+        RHICmdList.EndComputePass();
+    }
 }
