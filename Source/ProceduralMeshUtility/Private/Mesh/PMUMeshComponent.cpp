@@ -252,7 +252,7 @@ FPMUMeshSceneProxy* UPMUMeshComponent::GetSceneProxy()
     return (FPMUMeshSceneProxy*) SceneProxy;
 }
 
-void UPMUMeshComponent::CreateSectionFromSectionRef(int32 SectionIndex, const FPMUMeshSectionRef& Section)
+void UPMUMeshComponent::CreateSectionFromRef(int32 SectionIndex, const FPMUMeshSectionRef& Section)
 {
     // Invalid section resource, abort
     if (! Section.HasValidSection())
@@ -527,6 +527,18 @@ void UPMUMeshComponent::CopyMeshSection(
             NewSection.SectionLocalBox += Position;
         }
     }
+}
+
+void UPMUMeshComponent::ExpandSectionBounds(int32 SectionIndex, const FVector& NegativeExpand, const FVector& PositiveExpand)
+{
+    // Invalid section index, abort
+    if (! IsValidSection(SectionIndex))
+    {
+        return;
+    }
+
+	FPMUMeshSection& Section(Sections[SectionIndex]);
+    Section.SectionLocalBox = Section.SectionLocalBox.ExpandBy(NegativeExpand, PositiveExpand);
 }
 
 void UPMUMeshComponent::UpdateLocalBounds()

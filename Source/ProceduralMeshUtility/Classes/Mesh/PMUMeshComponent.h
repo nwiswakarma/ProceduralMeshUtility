@@ -103,7 +103,7 @@ public:
 	void UpdateRenderState();
 
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh", meta=(DisplayName="Create Section From Section Reference"))
-	void CreateSectionFromSectionRef(int32 SectionIndex, const FPMUMeshSectionRef& Section);
+	void CreateSectionFromRef(int32 SectionIndex, const FPMUMeshSectionRef& Section);
 
 	/**
 	 *	Create/replace a section for this procedural mesh component.
@@ -136,6 +136,10 @@ public:
         const FPMUMeshSection& SourceSection,
         bool bCalculateBounds = true
         );
+
+	// Expand section bounds
+	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")
+	void ExpandSectionBounds(int32 SectionIndex, const FVector& NegativeExpand, const FVector& PositiveExpand);
 
 	/** Clear a section of the procedural mesh. Other sections do not change index. */
 	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")

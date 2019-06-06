@@ -44,9 +44,16 @@ class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibra
 
 public:
 
+    UFUNCTION(BlueprintCallable, meta=(AutoCreateRefTerm="NegativeExpand,PositiveExpand"))
+    static void ExpandSectionBoundsMulti(
+        UPMUMeshComponent* MeshComponent,
+        const TArray<int32>& SectionIndices,
+        const FVector& NegativeExpand,
+        const FVector& PositiveExpand
+        );
+
     UFUNCTION(BlueprintCallable, meta=(DisplayName="Create Grid Mesh Section (GPU)", AdvancedDisplay="Bounds"))
     static void CreateGridMeshSectionGPU(
-        UObject* WorldContextObject,
         UPMUMeshComponent* MeshComponent,
         int32 SectionIndex,
         FBox Bounds,
@@ -74,7 +81,6 @@ public:
 
     UFUNCTION(BlueprintCallable)
     static void AssignHeightMapToMeshSection(
-        UObject* WorldContextObject,
         UPMUMeshComponent* MeshComponent,
         int32 SectionIndex,
         UTexture* HeightTexture = nullptr,
@@ -89,7 +95,6 @@ public:
 
     UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="bUseUV,PositionToUVScaleX,PositionToUVScaleY,bMaskByColor,bInverseColorMask,CallbackEvent"))
     static void AssignHeightMapToMeshSectionMulti(
-        UObject* WorldContextObject,
         UPMUMeshComponent* MeshComponent,
         TArray<int32> SectionIndices,
         UTexture* HeightTexture = nullptr,

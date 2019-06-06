@@ -180,8 +180,29 @@ IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(3)
 
 #undef IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS
 
+void UPMUMeshUtility::ExpandSectionBoundsMulti(
+    UPMUMeshComponent* MeshComponent,
+    const TArray<int32>& SectionIndices,
+    const FVector& NegativeExpand,
+    const FVector& PositiveExpand
+    )
+{
+    if (! IsValid(MeshComponent))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID MESH COMPONENT"));
+        return;
+    }
+
+    for (int32 i : SectionIndices)
+    {
+        if (MeshComponent->IsValidSection(i))
+        {
+            MeshComponent->ExpandSectionBounds(i, NegativeExpand, PositiveExpand);
+        }
+    }
+}
+
 void UPMUMeshUtility::CreateGridMeshSectionGPU(
-    UObject* WorldContextObject,
     UPMUMeshComponent* MeshComponent,
     int32 SectionIndex,
     FBox Bounds,
@@ -196,7 +217,7 @@ void UPMUMeshUtility::CreateGridMeshSectionGPU(
     UGWTTickEvent* CallbackEvent
     )
 {
-	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	UWorld* World = GEngine->GetWorldFromContextObject(MeshComponent, EGetWorldErrorMode::LogAndReturnNull);
 
     if (! IsValid(World))
     {
@@ -424,7 +445,6 @@ void UPMUMeshUtility::CreateGridMeshSectionGPU_RT(
 }
 
 void UPMUMeshUtility::AssignHeightMapToMeshSection(
-    UObject* WorldContextObject,
     UPMUMeshComponent* MeshComponent,
     int32 SectionIndex,
     UTexture* HeightTexture,
@@ -437,7 +457,7 @@ void UPMUMeshUtility::AssignHeightMapToMeshSection(
     UGWTTickEvent* CallbackEvent
     )
 {
-	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	UWorld* World = GEngine->GetWorldFromContextObject(MeshComponent, EGetWorldErrorMode::LogAndReturnNull);
 
     if (! IsValid(World))
     {
@@ -553,7 +573,6 @@ void UPMUMeshUtility::AssignHeightMapToMeshSection(
 }
 
 void UPMUMeshUtility::AssignHeightMapToMeshSectionMulti(
-    UObject* WorldContextObject,
     UPMUMeshComponent* MeshComponent,
     TArray<int32> SectionIndices,
     UTexture* HeightTexture,
@@ -566,7 +585,7 @@ void UPMUMeshUtility::AssignHeightMapToMeshSectionMulti(
     UGWTTickEvent* CallbackEvent
     )
 {
-	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	UWorld* World = GEngine->GetWorldFromContextObject(MeshComponent, EGetWorldErrorMode::LogAndReturnNull);
 
     if (! IsValid(World))
     {
