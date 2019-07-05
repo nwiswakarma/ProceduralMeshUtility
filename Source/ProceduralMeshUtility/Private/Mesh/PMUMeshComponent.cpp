@@ -252,7 +252,39 @@ FPMUMeshSceneProxy* UPMUMeshComponent::GetSceneProxy()
     return (FPMUMeshSceneProxy*) SceneProxy;
 }
 
-void UPMUMeshComponent::CreateSectionFromRef(int32 SectionIndex, const FPMUMeshSectionRef& Section)
+int32 UPMUMeshComponent::CreateNewSection(const FPMUMeshSectionRef& Section, int32 GroupIndex)
+{
+    // Invalid section resource, abort
+    if (! Section.HasValidSection())
+    {
+        return -1;
+    }
+
+    int32 SectionIndex = Sections.Num();
+
+    CreateSection(SectionIndex, Section);
+
+    if (GroupIndex >= 0)
+    {
+        AssignSectionGroup(SectionIndex, GroupIndex);
+    }
+
+    return SectionIndex;
+}
+
+void UPMUMeshComponent::AssignSectionGroup(int32 SectionIndex, int32 GroupIndex)
+{
+    // Invalid section or section group, abort
+    if (! IsValidSection(SectionIndex) || GroupIndex < 0)
+    {
+        return;
+    }
+
+    FSectionIdGroup& SectionGroup(SectionGroupMap.FindOrAdd(GroupIndex));
+    SectionGroup.AddUnique(SectionIndex);
+}
+
+void UPMUMeshComponent::CreateSection(int32 SectionIndex, const FPMUMeshSectionRef& Section)
 {
     // Invalid section resource, abort
     if (! Section.HasValidSection())

@@ -49,6 +49,8 @@ class PROCEDURALMESHUTILITY_API UPMUMeshComponent : public UMeshComponent, publi
 
 	friend class FPMUMeshSceneProxy;
 
+    typedef TArray<int32> FSectionIdGroup;
+
 public:
 
 	/** 
@@ -98,12 +100,16 @@ public:
 
 	FPMUMeshSceneProxy* GetSceneProxy();
 
+	int32 CreateNewSection(const FPMUMeshSectionRef& Section, int32 GroupIndex = -1);
+	void AssignSectionGroup(int32 SectionIndex, int32 GroupIndex);
+
 	/** Request render state update */
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
 	void UpdateRenderState();
 
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh", meta=(DisplayName="Create Section From Section Reference"))
-	void CreateSectionFromRef(int32 SectionIndex, const FPMUMeshSectionRef& Section);
+	void K2_CreateSectionFromRef(int32 SectionIndex, const FPMUMeshSectionRef& Section) { CreateSection(SectionIndex, Section); }
+	void CreateSection(int32 SectionIndex, const FPMUMeshSectionRef& Section);
 
 	/**
 	 *	Create/replace a section for this procedural mesh component.
@@ -184,6 +190,9 @@ private:
 	/** Array of sections of mesh */
 	UPROPERTY()
 	TArray<FPMUMeshSection> Sections;
+
+	/** Mesh sections groups */
+	TMap<int32, FSectionIdGroup> SectionGroupMap;
 
 	/** Local space bounds of mesh */
 	UPROPERTY()

@@ -34,6 +34,8 @@
 #include "/Engine/Private/Common.ush"
 
 RWBuffer<float> OutPositionData;
+RWByteAddressBuffer OutTangentData;
+
 Buffer<float4> ColorData;
 Buffer<float2> UVData;
 
@@ -53,8 +55,22 @@ float2 _PositionToUVScale;
 #define PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_COLOR_BUFFER_MASK 0
 #endif
 
+#ifndef PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS
+#define PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS 0
+#endif
+
+#define TAN_STRIDE 8
+
+uint PackNormalizedFloat4(float4 v)
+{
+	int4 n;
+    n = v * 127.4999f;
+    n = n & 0xFF;
+	return n.x | (n.y << 8) | (n.z << 16) | (n.w << 24);
+}
+
 [numthreads(THREAD_SIZE_X,1,1)]
-void AssignSingleCS(uint3 tid : SV_DispatchThreadID)
+void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
 {
 	const uint VertexId = tid.x;
 
@@ -64,7 +80,7 @@ void AssignSingleCS(uint3 tid : SV_DispatchThreadID)
 		return;
 	}
 
-    const uint AttrIdx = 3 * VertexId;
+    const uint PosAttrId = 3 * VertexId;
 
     float mask;
     float2 uv;
@@ -79,14 +95,42 @@ void AssignSingleCS(uint3 tid : SV_DispatchThreadID)
 #if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER
     uv = UVData[VertexId].xy;
 #else
-    uv.x = OutPositionData[AttrIdx  ];
-    uv.y = OutPositionData[AttrIdx+1];
+    uv.x = OutPositionData[PosAttrId  ];
+    uv.y = OutPositionData[PosAttrId+1];
     uv *= _PositionToUVScale;
 #endif
 
     float hv;
     hv = Texture2DSample(HeightTexture, HeightTextureSampler, uv).x;
-    hv *= _HeightScale;
 
-    OutPositionData[AttrIdx+2] += hv * mask;
+#if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS
+    const uint TanAttrId = 2 * VertexId;
+    const float NormalIntensity = 1.f;
+    const float2 uvo = _PositionToUVScale;
+
+#if 0
+    float hpx = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(uvo.x, 0.f)).x;
+    float hpy = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(0.f, uvo.y)).x;
+    float hnx = Texture2DSample(HeightTexture, HeightTextureSampler, uv-float2(uvo.x, 0.f)).x;
+    float hny = Texture2DSample(HeightTexture, HeightTextureSampler, uv-float2(0.f, uvo.y)).x;
+
+    float3 nx = float3(1,0, (hnx-hpx)*NormalIntensity);
+    float3 ny = float3(0,1, (hny-hpy)*NormalIntensity);
+    float3 normal = 1.f+normalize(cross(nx, ny));
+#else
+    float hx = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(uvo.x, 0.f)).x;
+    float hy = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(0.f, uvo.y)).x;
+
+    float3 nx = float3(1,0, (hv-hx)*NormalIntensity);
+    float3 ny = float3(0,1, (hv-hy)*NormalIntensity);
+    float3 normal = 1.f+normalize(cross(nx, ny));
+#endif
+
+    uint un = PackNormalizedFloat4(float4(normal,1));
+    uint ut = PackNormalizedFloat4(float4(1,0,0,0));
+
+    OutTangentData.Store2(VertexId*TAN_STRIDE, uint2(ut,un));
+#endif
+
+    OutPositionData[PosAttrId+2] += hv * _HeightScale * mask;
 }

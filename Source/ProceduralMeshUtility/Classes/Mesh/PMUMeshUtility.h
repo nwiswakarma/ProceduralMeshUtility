@@ -119,4 +119,33 @@ public:
         bool bMaskByColor,
         bool bInverseColorMask
         );
+
+    UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="bUseUV,PositionToUVScaleX,PositionToUVScaleY,bMaskByColor,bInverseColorMask,CallbackEvent"))
+    static void ApplyHeightMapToMeshSectionMulti(
+        UObject* WorldContextObject,
+        TArray<FPMUMeshSectionRef> SectionRefs,
+        UTexture* HeightTexture = nullptr,
+        float HeightScale = 1.f,
+        bool bUseUV = false,
+        float PositionToUVScaleX = 1.f,
+        float PositionToUVScaleY = 1.f,
+        bool bMaskByColor = true,
+        bool bInverseColorMask = false,
+        bool bAssignTangents = false,
+        UGWTTickEvent* CallbackEvent = nullptr
+        );
+
+    static void ApplyHeightMapToMeshSection_RT(
+        FRHICommandListImmediate& RHICmdList,
+        ERHIFeatureLevel::Type FeatureLevel,
+        const TArray<FPMUMeshSection*>& Sections,
+        const FTexture& HeightTexture,
+        float HeightScale,
+        bool bUseUV,
+        float PositionToUVScaleX,
+        float PositionToUVScaleY,
+        bool bMaskByColor,
+        bool bInverseColorMask,
+        bool bAssignTangents
+        );
 };
