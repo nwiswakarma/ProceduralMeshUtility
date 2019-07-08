@@ -546,7 +546,7 @@ void UPMUMeshUtility::AssignHeightMapToMeshSection(
                 return;
             }
 
-            FPMUMeshProxySection* Section = SceneProxy->GetSection(SectionIndex);
+            FPMUBaseMeshProxySection* Section = SceneProxy->GetSection(SectionIndex);
 
             if (! Section)
             {
@@ -559,7 +559,7 @@ void UPMUMeshUtility::AssignHeightMapToMeshSection(
                 return;
             }
 
-            TArray<FPMUMeshProxySection*> Sections;
+            TArray<FPMUBaseMeshProxySection*> Sections;
             Sections.Emplace(Section);
 
             AssignHeightMapToMeshSection_RT(
@@ -675,7 +675,7 @@ void UPMUMeshUtility::AssignHeightMapToMeshSectionMulti(
         [RenderParameter](FRHICommandListImmediate& RHICmdList)
         {
             FPMUMeshSceneProxy* SceneProxy(RenderParameter.SceneProxy);
-            TArray<FPMUMeshProxySection*> Sections;
+            TArray<FPMUBaseMeshProxySection*> Sections;
 
             if (! SceneProxy)
             {
@@ -690,7 +690,7 @@ void UPMUMeshUtility::AssignHeightMapToMeshSectionMulti(
 
             for (int32 i : RenderParameter.SectionIndices)
             {
-                FPMUMeshProxySection* Section = SceneProxy->GetSection(i);
+                FPMUBaseMeshProxySection* Section = SceneProxy->GetSection(i);
 
                 if (Section)
                 {
@@ -722,7 +722,7 @@ void UPMUMeshUtility::AssignHeightMapToMeshSectionMulti(
 void UPMUMeshUtility::AssignHeightMapToMeshSection_RT(
     FRHICommandListImmediate& RHICmdList,
     ERHIFeatureLevel::Type FeatureLevel,
-    const TArray<FPMUMeshProxySection*>& Sections,
+    const TArray<FPMUBaseMeshProxySection*>& Sections,
     const FTexture& HeightTexture,
     float HeightScale,
     bool bUseUV,
@@ -743,10 +743,10 @@ void UPMUMeshUtility::AssignHeightMapToMeshSection_RT(
 
     for (int32 i=0; i<SectionCount; ++i)
     {
-        FPMUMeshProxySection& Section(*Sections[i]);
-        FPMUPositionVertexBuffer& PositionBuffer(Section.PositionVertexBuffer);
-        FPMUColorVertexBuffer& ColorBuffer(Section.ColorVertexBuffer);
-        auto& UVBuffer(Section.StaticMeshVertexBuffer.TexCoordVertexBuffer);
+        FPMUBaseMeshProxySection& Section(*Sections[i]);
+        FPMUPositionVertexBuffer& PositionBuffer(*Section.GetPositionVertexBuffer());
+        FPMUColorVertexBuffer& ColorBuffer(*Section.GetColorVertexBuffer());
+        auto& UVBuffer(Section.GetStaticMeshVertexBuffer()->TexCoordVertexBuffer);
 
         check(PositionBuffer.IsInitialized());
 
@@ -987,32 +987,25 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSection_RT(
     // Generate vertex data input
 
     TResourceArray<FVector, VERTEXBUFFER_ALIGNMENT> PositionInputData;
-    TResourceArray<uint32, VERTEXBUFFER_ALIGNMENT> TangentInputData;
-
     PositionInputData.Reserve(VertexCount);
-
-    if (bAssignTangents)
-    {
-        TangentInputData.Reserve(VertexCount*2);
-    }
 
     for (int32 i=0; i<SectionCount; ++i)
     {
         FPMUMeshSection& Section(*Sections[i]);
         PositionInputData.Append(Section.Positions);
-
-        if (bAssignTangents)
-        {
-            TangentInputData.Append(Section.Tangents);
-        }
     }
 
     // Create vertex buffer and UAV
 
     const uint32 PositionDataSize = PositionInputData.GetResourceDataSize();
-    FRHIResourceCreateInfo CreateInfo(&PositionInputData);
-    FVertexBufferRHIRef PositionData = RHICreateVertexBuffer(PositionDataSize, BUF_Static | BUF_UnorderedAccess, CreateInfo);
-    FUnorderedAccessViewRHIRef PositionDataUAV = RHICreateUnorderedAccessView(PositionData, PF_R32_FLOAT);
+    FVertexBufferRHIRef PositionData;
+    FUnorderedAccessViewRHIRef PositionDataUAV;
+
+    {
+        FRHIResourceCreateInfo CreateInfo(&PositionInputData);
+        PositionData = RHICreateVertexBuffer(PositionDataSize, BUF_Static | BUF_UnorderedAccess, CreateInfo);
+        PositionDataUAV = RHICreateUnorderedAccessView(PositionData, PF_R32_FLOAT);
+    }
 
     FRULRWByteAddressBuffer TangentData;
     FUnorderedAccessViewRHIParamRef TangentDataUAV;
@@ -1070,7 +1063,7 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSection_RT(
 
         if (bAssignTangents)
         {
-            TangentData.Initialize(TangentInputData.GetResourceDataSize(), &TangentInputData, BUF_Static);
+            TangentData.Initialize(VertexCount*2*sizeof(uint32), BUF_Static);
             TangentDataUAV = TangentData.UAV;
 
             ComputeShader->BindUAV(RHICmdList, TEXT("OutTangentData"), TangentDataUAV);

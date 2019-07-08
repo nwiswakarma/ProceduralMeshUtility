@@ -153,6 +153,11 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSectionRef
     {
         return SectionPtr != nullptr;
     }
+
+    FORCEINLINE bool HasGeometry() const
+    {
+        return HasValidSection() && SectionPtr->HasGeometry();
+    }
 };
 
 USTRUCT(BlueprintType)

@@ -35,7 +35,7 @@
 
 class UGWTTickEvent;
 class UPMUMeshComponent;
-class FPMUMeshProxySection;
+class FPMUBaseMeshProxySection;
 
 UCLASS()
 class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibrary
@@ -110,7 +110,7 @@ public:
     static void AssignHeightMapToMeshSection_RT(
         FRHICommandListImmediate& RHICmdList,
         ERHIFeatureLevel::Type FeatureLevel,
-        const TArray<FPMUMeshProxySection*>& Sections,
+        const TArray<FPMUBaseMeshProxySection*>& Sections,
         const FTexture& HeightTexture,
         float HeightScale,
         bool bUseUV,

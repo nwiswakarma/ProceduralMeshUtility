@@ -40,132 +40,307 @@
 #include "Mesh/PMUMeshComponent.h"
 
 class FPMUPositionVertexData :
-	public TStaticMeshVertexData<FPositionVertex>
+    public TStaticMeshVertexData<FPositionVertex>
 {
 public:
-	FPMUPositionVertexData(bool InNeedsCPUAccess = false)
-		: TStaticMeshVertexData<FPositionVertex>(InNeedsCPUAccess)
-	{
-	}
+    FPMUPositionVertexData(bool InNeedsCPUAccess = false)
+        : TStaticMeshVertexData<FPositionVertex>(InNeedsCPUAccess)
+    {
+    }
 };
 
 FPMUPositionVertexBuffer::FPMUPositionVertexBuffer():
-	VertexData(NULL),
-	Data(NULL),
-	Stride(0),
-	NumVertices(0)
+    VertexData(NULL),
+    Data(NULL),
+    Stride(0),
+    NumVertices(0)
 {
 }
 
 FPMUPositionVertexBuffer::~FPMUPositionVertexBuffer()
 {
-	CleanUp();
+    CleanUp();
 }
 
 /** Delete existing resources */
 void FPMUPositionVertexBuffer::CleanUp()
 {
-	if (VertexData)
-	{
-		delete VertexData;
-		VertexData = NULL;
-	}
+    if (VertexData)
+    {
+        delete VertexData;
+        VertexData = NULL;
+    }
 }
 
 void FPMUPositionVertexBuffer::Init(const TArray<FVector>& InPositions, bool bInNeedsCPUAccess)
 {
-	NumVertices = InPositions.Num();
-	bNeedsCPUAccess = bInNeedsCPUAccess;
-	if (NumVertices)
-	{
-		AllocateData(bInNeedsCPUAccess);
-		check(Stride == InPositions.GetTypeSize());
-		VertexData->ResizeBuffer(NumVertices);
-		Data = VertexData->GetDataPointer();
-		FMemory::Memcpy( Data, InPositions.GetData(), Stride * NumVertices );
-	}
+    NumVertices = InPositions.Num();
+    bNeedsCPUAccess = bInNeedsCPUAccess;
+    if (NumVertices)
+    {
+        AllocateData(bInNeedsCPUAccess);
+        check(Stride == InPositions.GetTypeSize());
+        VertexData->ResizeBuffer(NumVertices);
+        Data = VertexData->GetDataPointer();
+        FMemory::Memcpy( Data, InPositions.GetData(), Stride * NumVertices );
+    }
 }
 
 void FPMUPositionVertexBuffer::Serialize(FArchive& Ar, bool bInNeedsCPUAccess)
 {
-	bNeedsCPUAccess = bInNeedsCPUAccess;
+    bNeedsCPUAccess = bInNeedsCPUAccess;
 
-	Ar << Stride << NumVertices;
+    Ar << Stride << NumVertices;
 
-	if (Ar.IsLoading())
-	{
-		// Allocate the vertex data storage type.
-		AllocateData(bInNeedsCPUAccess);
-	}
+    if (Ar.IsLoading())
+    {
+        // Allocate the vertex data storage type.
+        AllocateData(bInNeedsCPUAccess);
+    }
 
-	if (VertexData != NULL)
-	{
-		// Serialize the vertex data.
-		VertexData->Serialize(Ar);
+    if (VertexData != NULL)
+    {
+        // Serialize the vertex data.
+        VertexData->Serialize(Ar);
 
-		// Make a copy of the vertex data pointer.
-		Data = NumVertices ? VertexData->GetDataPointer() : nullptr;
-	}
+        // Make a copy of the vertex data pointer.
+        Data = NumVertices ? VertexData->GetDataPointer() : nullptr;
+    }
 }
 
 /**
-* Specialized assignment operator, only used when importing LOD's.  
-*/
+ * Specialized assignment operator, only used when importing LOD's.  
+ */
 void FPMUPositionVertexBuffer::operator=(const FPMUPositionVertexBuffer &Other)
 {
-	// VertexData doesn't need to be allocated here
+    // VertexData doesn't need to be allocated here
     // because Build will be called next,
-	VertexData = NULL;
+    VertexData = NULL;
 }
 
 void FPMUPositionVertexBuffer::InitRHI()
 {
-	check(VertexData);
-	FResourceArrayInterface* ResourceArray = VertexData->GetResourceArray();
-	if (ResourceArray->GetResourceDataSize())
-	{
-		// Create the vertex buffer.
-		FRHIResourceCreateInfo CreateInfo(ResourceArray);
-		VertexBufferRHI = RHICreateVertexBuffer(ResourceArray->GetResourceDataSize(), BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
+    check(VertexData);
+    FResourceArrayInterface* ResourceArray = VertexData->GetResourceArray();
+    if (ResourceArray->GetResourceDataSize())
+    {
+        // Create the vertex buffer.
+        FRHIResourceCreateInfo CreateInfo(ResourceArray);
+        VertexBufferRHI = RHICreateVertexBuffer(ResourceArray->GetResourceDataSize(), BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
 
-		// we have decide to create the SRV based on GMaxRHIShaderPlatform because this is created once and shared between feature levels for editor preview.
-		if (RHISupportsManualVertexFetch(GMaxRHIShaderPlatform) || IsGPUSkinCacheAvailable())
-		{
-			PositionComponentSRV = RHICreateShaderResourceView(VertexBufferRHI, 4, PF_R32_FLOAT);
-		}
+        // we have decide to create the SRV based on GMaxRHIShaderPlatform because this is created once and shared between feature levels for editor preview.
+        if (RHISupportsManualVertexFetch(GMaxRHIShaderPlatform) || IsGPUSkinCacheAvailable())
+        {
+            PositionComponentSRV = RHICreateShaderResourceView(VertexBufferRHI, 4, PF_R32_FLOAT);
+        }
 
         PositionComponentUAV = RHICreateUnorderedAccessView(VertexBufferRHI, PF_R32_FLOAT);
-	}
+    }
 }
 
 void FPMUPositionVertexBuffer::ReleaseRHI()
 {
-	PositionComponentSRV.SafeRelease();
-	PositionComponentUAV.SafeRelease();
+    PositionComponentSRV.SafeRelease();
+    PositionComponentUAV.SafeRelease();
 
-	FVertexBuffer::ReleaseRHI();
+    FVertexBuffer::ReleaseRHI();
 }
 
 void FPMUPositionVertexBuffer::AllocateData(bool bInNeedsCPUAccess)
 {
-	// Clear any old VertexData before allocating.
-	CleanUp();
+    // Clear any old VertexData before allocating.
+    CleanUp();
 
-	VertexData = new FPMUPositionVertexData(bInNeedsCPUAccess);
+    VertexData = new FPMUPositionVertexData(bInNeedsCPUAccess);
 
-	// Calculate the vertex stride.
-	Stride = VertexData->GetStride();
+    // Calculate the vertex stride.
+    Stride = VertexData->GetStride();
 }
 
 void FPMUPositionVertexBuffer::BindPositionVertexBuffer(const FVertexFactory* VertexFactory, FStaticMeshDataType& StaticMeshData) const
 {
-	StaticMeshData.PositionComponent = FVertexStreamComponent(
-		this,
-		STRUCT_OFFSET(FPositionVertex, Position),
-		GetStride(),
-		VET_Float3
-	);
-	StaticMeshData.PositionComponentSRV = PositionComponentSRV;
+    StaticMeshData.PositionComponent = FVertexStreamComponent(
+        this,
+        STRUCT_OFFSET(FPositionVertex, Position),
+        GetStride(),
+        VET_Float3
+    );
+    StaticMeshData.PositionComponentSRV = PositionComponentSRV;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+bool FPMUUniformTangentVertexFactory::ShouldCompilePermutation(EShaderPlatform Platform, const FMaterial* Material, const FShaderType* ShaderType)
+{
+    return ! Material->IsUsedWithParticleSystem()
+        && ! Material->IsUsedWithParticleSprites()
+        && ! Material->IsUsedWithBeamTrails()
+        && ! Material->IsUsedWithMeshParticles()
+        && ! Material->IsUsedWithNiagaraSprites()
+        && ! Material->IsUsedWithNiagaraRibbons()
+        && ! Material->IsUsedWithNiagaraMeshParticles()
+        && ! Material->IsUsedWithMorphTargets()
+        && ! Material->IsUsedWithUI()
+        && FLocalVertexFactory::ShouldCompilePermutation(Platform, Material, ShaderType);
+}
+
+//IMPLEMENT_VERTEX_FACTORY_TYPE(
+//    FactoryClass,
+//    ShaderFilename,
+//    bUsedWithMaterials,
+//    bSupportsStaticLighting,
+//    bSupportsDynamicLighting,
+//    bPrecisePrevWorldPos,
+//    bSupportsPositionOnly
+//    )
+
+IMPLEMENT_VERTEX_FACTORY_TYPE(FPMUUniformTangentVertexFactory,"/Plugin/ProceduralMeshUtility/Private/PMUUniformTangentVertexFactory.ush",true,true,true,true,true);
+
+//////////////////////////////////////////////////////////////////////////
+
+void FPMUMeshProxySection::InitSection(const FPMUMeshSection& Section, UMaterialInterface* InMaterial)
+{
+    // Copy index buffer
+
+    IndexBuffer.Indices = Section.Indices;
+
+    // Copy position buffer
+
+    PositionVertexBuffer.Init(Section.Positions);
+
+    const int32 NumVerts = Section.Positions.Num();
+
+    // Copy color buffer if it has valid size, otherwise don't initialize
+    // to use the default color buffer binding
+
+    if (Section.Colors.Num() == NumVerts)
+    {
+        ColorVertexBuffer.InitFromColorArrayMemcpy(Section.Colors);
+    }
+
+    // Copy UV and Tangent buffers
+
+    FPMUStaticMeshVertexBuffer& UVTangentsBuffer(StaticMeshVertexBuffer);
+
+    UVTangentsBuffer.Init(NumVerts, 1);
+
+    const uint32 TangentDataSize = Section.Tangents.Num() * Section.Tangents.GetTypeSize();
+    const uint32 UVDataSize = Section.UVs.Num() * Section.UVs.GetTypeSize();
+
+    const bool bHasValidTangentInitSize = UVTangentsBuffer.IsValidTangentArrayInitSize(TangentDataSize);
+    const bool bHasValidTexCoordInitSize = UVTangentsBuffer.IsValidTexCoordArrayInitSize(UVDataSize);
+
+    bool bRequireManualTangentInit = bHasValidTangentInitSize;
+    bool bRequireManualTexCoordInit = bHasValidTexCoordInitSize; 
+
+    if (Section.bEnableFastTangentsCopy && bHasValidTangentInitSize)
+    {
+        UVTangentsBuffer.InitTangentsFromArray(Section.Tangents);
+        bRequireManualTangentInit = false;
+    }
+
+    if (Section.bEnableFastUVCopy && bHasValidTexCoordInitSize)
+    {
+        UVTangentsBuffer.InitTexCoordsFromArray(Section.UVs);
+        bRequireManualTexCoordInit = false;
+    }
+
+    if (bRequireManualTangentInit || bRequireManualTexCoordInit)
+    {
+        for (int32 i=0; i<NumVerts; ++i)
+        {
+            if (bRequireManualTangentInit)
+            {
+                const FVector& VX(Section.TangentsX[i]);
+                const FVector& VZ(Section.TangentsZ[i]);
+                FPackedNormal NX(VX);
+                FPackedNormal NZ(FVector4(VZ,1));
+
+                UVTangentsBuffer.SetVertexTangents(i, VX, GenerateYAxis(NX, NZ), VZ);
+            }
+
+            if (bRequireManualTexCoordInit)
+            {
+                UVTangentsBuffer.SetVertexUV(i, 0, Section.UVs[i]);
+            }
+        }
+    }
+
+    // Enqueue render resource initialization
+
+    FPMUMeshProxySection* ProxySection = this;
+    ENQUEUE_RENDER_COMMAND(ConstructSections_InitializeResources)(
+        [ProxySection](FRHICommandListImmediate& RHICmdList)
+        {
+            ProxySection->InitResource();
+        } );
+
+    // Assign material or revert to default if material
+    // for the specified section does not exist
+
+    Material = InMaterial;
+
+    if (Material == nullptr)
+    {
+        Material = UMaterial::GetDefaultMaterial(MD_Surface);
+    }
+
+    // Copy visibility info
+    bSectionVisible = Section.bSectionVisible;
+}
+
+void FPMUMeshProxySection::InitResource()
+{
+    check(IsInRenderingThread());
+
+    // Initialize buffers
+    PositionVertexBuffer.InitResource();
+    StaticMeshVertexBuffer.InitResource();
+    ColorVertexBuffer.InitResource();
+    IndexBuffer.InitResource();
+
+    FLocalVertexFactory* VF(GetVertexFactory());
+
+    // Bind vertex buffers
+    FLocalVertexFactory::FDataType Data;
+    PositionVertexBuffer.BindPositionVertexBuffer(VF, Data);
+#if 1
+    StaticMeshVertexBuffer.BindTangentVertexBuffer(VF, Data);
+#else
+    {
+        Data.TangentsSRV = GNullColorVertexBuffer.VertexBufferSRV;
+        Data.TangentBasisComponents[0] = FVertexStreamComponent(&GNullColorVertexBuffer, 0, 0, VET_Color, EVertexStreamUsage::ManualFetch);
+        Data.TangentBasisComponents[1] = FVertexStreamComponent(&GNullColorVertexBuffer, 0, 0, VET_Color, EVertexStreamUsage::ManualFetch);
+    }
+#endif
+#if 1
+    StaticMeshVertexBuffer.BindPackedTexCoordVertexBuffer(VF, Data);
+    StaticMeshVertexBuffer.BindLightMapVertexBuffer(VF, Data, 0);
+#else
+    {
+        Data.TextureCoordinates.Empty();
+        Data.NumTexCoords = 0;
+
+        Data.TextureCoordinatesSRV = GNullColorVertexBuffer.VertexBufferSRV;
+
+        int32 UVIndex;
+
+        for (UVIndex=0; UVIndex<Data.NumTexCoords-1; UVIndex+=2)
+        {
+            Data.TextureCoordinates.Add(FVertexStreamComponent(&GNullColorVertexBuffer, 0, 0, VET_Color, EVertexStreamUsage::ManualFetch));
+        }
+        // Last UV channel if tex coords count is an odd number
+        if (UVIndex < Data.NumTexCoords)
+        {
+            Data.TextureCoordinates.Add(FVertexStreamComponent(&GNullColorVertexBuffer, 0, 0, VET_Color, EVertexStreamUsage::ManualFetch));
+        }
+    }
+#endif
+    ColorVertexBuffer.BindColorVertexBuffer(VF, Data);
+    VF->SetData(Data);
+
+    // Initialize vertex factory
+    VF->InitResource();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -182,7 +357,7 @@ FPMUMeshSceneProxy::FPMUMeshSceneProxy(UPMUMeshComponent* Component)
 
 FPMUMeshSceneProxy::~FPMUMeshSceneProxy()
 {
-    for (FPMUMeshProxySection* Section : Sections)
+    for (FPMUBaseMeshProxySection* Section : Sections)
     {
         if (Section != nullptr)
         {
@@ -190,6 +365,11 @@ FPMUMeshSceneProxy::~FPMUMeshSceneProxy()
             delete Section;
         }
     }
+}
+
+FPMUBaseMeshProxySection* FPMUMeshSceneProxy::CreateSectionProxy(ERHIFeatureLevel::Type FeatureLevel)
+{
+    return new FPMUMeshProxySection(FeatureLevel, true);
 }
 
 void FPMUMeshSceneProxy::ConstructSections(UPMUMeshComponent& Component)
@@ -205,114 +385,8 @@ void FPMUMeshSceneProxy::ConstructSections(UPMUMeshComponent& Component)
 
         if (SrcSection.Indices.Num() >= 3 && SrcSection.Positions.Num() >= 3)
         {
-            // Create new section
-
-            Sections[SectionIdx] = new FPMUMeshProxySection(FeatureLevel, true);
-            FPMUMeshProxySection& DstSection(*Sections[SectionIdx]);
-
-            // Copy index buffer
-
-            DstSection.IndexBuffer.Indices = SrcSection.Indices;
-
-            // Copy position buffer
-
-            const int32 NumVerts = SrcSection.Positions.Num();
-            DstSection.PositionVertexBuffer.Init(SrcSection.Positions);
-
-            // Copy color buffer if it has valid size, otherwise don't initialize
-            // to use the default color buffer binding
-
-            if (SrcSection.Colors.Num() == NumVerts)
-            {
-                DstSection.ColorVertexBuffer.InitFromColorArrayMemcpy(SrcSection.Colors);
-            }
-
-            // Copy UV and Tangent buffers
-
-            FPMUStaticMeshVertexBuffer& UVTangentsBuffer(DstSection.StaticMeshVertexBuffer);
-
-            UVTangentsBuffer.Init(NumVerts, 1);
-
-            const uint32 TangentDataSize = SrcSection.Tangents.Num() * SrcSection.Tangents.GetTypeSize();
-            const uint32 UVDataSize = SrcSection.UVs.Num() * SrcSection.UVs.GetTypeSize();
-
-            const bool bHasValidTangentInitSize = UVTangentsBuffer.IsValidTangentArrayInitSize(TangentDataSize);
-            const bool bHasValidTexCoordInitSize = UVTangentsBuffer.IsValidTexCoordArrayInitSize(UVDataSize);
-
-            bool bRequireManualTangentInit = bHasValidTangentInitSize;
-            bool bRequireManualTexCoordInit = bHasValidTexCoordInitSize; 
-
-            if (SrcSection.bEnableFastTangentsCopy && bHasValidTangentInitSize)
-            {
-                UVTangentsBuffer.InitTangentsFromArray(SrcSection.Tangents);
-                bRequireManualTangentInit = false;
-            }
-
-            if (SrcSection.bEnableFastUVCopy && bHasValidTexCoordInitSize)
-            {
-                UVTangentsBuffer.InitTexCoordsFromArray(SrcSection.UVs);
-                bRequireManualTexCoordInit = false;
-            }
-
-            if (bRequireManualTangentInit || bRequireManualTexCoordInit)
-            {
-                for (int32 i=0; i<NumVerts; ++i)
-                {
-                    if (bRequireManualTangentInit)
-                    {
-                        const FVector& VX(SrcSection.TangentsX[i]);
-                        const FVector& VZ(SrcSection.TangentsZ[i]);
-                        FPackedNormal NX(VX);
-                        FPackedNormal NZ(FVector4(VZ,1));
-
-                        UVTangentsBuffer.SetVertexTangents(i, VX, GenerateYAxis(NX, NZ), VZ);
-                    }
-
-                    if (bRequireManualTexCoordInit)
-                    {
-                        UVTangentsBuffer.SetVertexUV(i, 0, SrcSection.UVs[i]);
-                    }
-                }
-            }
-
-            // Enqueue render resource initialization
-
-            FPMUMeshProxySection* Section = &DstSection;
-            FLocalVertexFactory* VertexFactory = &DstSection.VertexFactory;
-            ENQUEUE_RENDER_COMMAND(ConstructSections_InitializeResources)(
-                [VertexFactory, Section](FRHICommandListImmediate& RHICmdList)
-                {
-                    // Initialize buffers
-                    Section->PositionVertexBuffer.InitResource();
-                    Section->StaticMeshVertexBuffer.InitResource();
-                    Section->ColorVertexBuffer.InitResource();
-                    Section->IndexBuffer.InitResource();
-
-                    // Bind vertex buffers
-                    FLocalVertexFactory::FDataType Data;
-                    Section->PositionVertexBuffer.BindPositionVertexBuffer(VertexFactory, Data);
-                    Section->StaticMeshVertexBuffer.BindTangentVertexBuffer(VertexFactory, Data);
-                    Section->StaticMeshVertexBuffer.BindPackedTexCoordVertexBuffer(VertexFactory, Data);
-                    Section->StaticMeshVertexBuffer.BindLightMapVertexBuffer(VertexFactory, Data, 0);
-                    Section->ColorVertexBuffer.BindColorVertexBuffer(VertexFactory, Data);
-                    VertexFactory->SetData(Data);
-
-                    // Initialize vertex factory
-                    VertexFactory->InitResource();
-                } );
-
-            // Assign material or revert to default if material
-            // for the specified section does not exist
-
-            DstSection.Material = Component.GetMaterial(SectionIdx);
-
-            if (DstSection.Material == NULL)
-            {
-                DstSection.Material = UMaterial::GetDefaultMaterial(MD_Surface);
-            }
-
-            // Copy visibility info
-            DstSection.bSectionVisible = SrcSection.bSectionVisible;
+            Sections[SectionIdx] = CreateSectionProxy(FeatureLevel);
+            Sections[SectionIdx]->InitSection(SrcSection, Component.GetMaterial(SectionIdx));
         }
     }
 }
@@ -341,11 +415,11 @@ void FPMUMeshSceneProxy::GetDynamicMeshElements(
     }
 
     // Iterate over direct sections
-    for (const FPMUMeshProxySection* Section : Sections)
+    for (const FPMUBaseMeshProxySection* Section : Sections)
     {
-        if (Section != nullptr && Section->bSectionVisible)
+        if (Section && Section->IsSectionVisible())
         {
-            FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : Section->Material->GetRenderProxy();
+            FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : Section->GetMaterial()->GetRenderProxy();
 
             for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
             {
@@ -357,7 +431,7 @@ void FPMUMeshSceneProxy::GetDynamicMeshElements(
 
                     FMeshBatch& Mesh = Collector.AllocateMesh();
                     Mesh.bWireframe = bWireframe;
-                    Mesh.VertexFactory = &Section->VertexFactory;
+                    Mesh.VertexFactory = Section->GetVertexFactory();
                     Mesh.MaterialRenderProxy = MaterialProxy;
                     Mesh.ReverseCulling = IsLocalToWorldDeterminantNegative();
                     Mesh.Type = PT_TriangleList;
@@ -367,11 +441,11 @@ void FPMUMeshSceneProxy::GetDynamicMeshElements(
                     // Setup mesh element
 
                     FMeshBatchElement& BatchElement = Mesh.Elements[0];
-                    BatchElement.IndexBuffer = &Section->IndexBuffer;
+                    BatchElement.IndexBuffer = Section->GetIndexBuffer();
                     BatchElement.FirstIndex = 0;
-                    BatchElement.NumPrimitives = Section->IndexBuffer.Indices.Num() / 3;
+                    BatchElement.NumPrimitives = Section->GetIndexBuffer()->Indices.Num() / 3;
                     BatchElement.MinVertexIndex = 0;
-                    BatchElement.MaxVertexIndex = Section->PositionVertexBuffer.GetNumVertices() - 1;
+                    BatchElement.MaxVertexIndex = Section->GetPositionVertexBuffer()->GetNumVertices() - 1;
 
                     // Create single frame primitive uniform buffer
                     {

@@ -105,29 +105,30 @@ void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
 
 #if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS
     const uint TanAttrId = 2 * VertexId;
-    const float NormalIntensity = 1.f;
     const float2 uvo = _PositionToUVScale;
 
-#if 0
+// 4 Samples
+#if 1
     float hpx = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(uvo.x, 0.f)).x;
     float hpy = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(0.f, uvo.y)).x;
     float hnx = Texture2DSample(HeightTexture, HeightTextureSampler, uv-float2(uvo.x, 0.f)).x;
     float hny = Texture2DSample(HeightTexture, HeightTextureSampler, uv-float2(0.f, uvo.y)).x;
 
-    float3 nx = float3(1,0, (hnx-hpx)*NormalIntensity);
-    float3 ny = float3(0,1, (hny-hpy)*NormalIntensity);
-    float3 normal = 1.f+normalize(cross(nx, ny));
+    float3 nx = float3(1,0, (hpx-hnx)*_HeightScale);
+    float3 ny = float3(0,1, (hpy-hny)*_HeightScale);
+    float3 normal = normalize(cross(nx, ny));
+// 3 Samples
 #else
     float hx = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(uvo.x, 0.f)).x;
     float hy = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(0.f, uvo.y)).x;
 
-    float3 nx = float3(1,0, (hv-hx)*NormalIntensity);
-    float3 ny = float3(0,1, (hv-hy)*NormalIntensity);
-    float3 normal = 1.f+normalize(cross(nx, ny));
+    float3 nx = float3(1,0, (hx-hv)*_HeightScale);
+    float3 ny = float3(0,1, (hy-hv)*_HeightScale);
+    float3 normal = normalize(cross(nx, ny));
 #endif
 
-    uint un = PackNormalizedFloat4(float4(normal,1));
     uint ut = PackNormalizedFloat4(float4(1,0,0,0));
+    uint un = PackNormalizedFloat4(float4(normal,1.f));
 
     OutTangentData.Store2(VertexId*TAN_STRIDE, uint2(ut,un));
 #endif
