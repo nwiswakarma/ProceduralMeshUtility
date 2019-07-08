@@ -57,8 +57,8 @@ class FPMUMeshSimplifierQEF
         );
 
     static int32 FindValidCollapses(
-        TArray<int32>& CollapseValid, 
-        TArray<int32>& CollapseEdgeID, 
+        TArray<uint32>& CollapseValid, 
+        TArray<uint32>& CollapseEdgeID, 
         TArray<FVector>& CollapsePositions,
         TArray<FVector>& CollapseNormals,
         const TArray<FEdge>& Edges,
@@ -71,10 +71,10 @@ class FPMUMeshSimplifierQEF
     static void CollapseEdges(
         TArray<FVector>& Positions,
         TArray<FVector>& Normals,
-        TArray<int32>& CollapseTarget,
-        const TArray<int32>& CollapseValid,
+        TArray<uint32>& CollapseTarget,
         const TArray<FEdge>& Edges,
-        const TArray<int32>& CollapseEdgeID,
+        const TArray<uint32>& CollapseValid,
+        const TArray<uint32>& CollapseEdgeID,
         const TArray<FVector>& CollapsePositions,
         const TArray<FVector>& CollapseNormals
         );
@@ -83,14 +83,14 @@ class FPMUMeshSimplifierQEF
         TArray<uint32>& Tris,
         TArray<uint32>& TriBuffer,
         TArray<int32>& VertexTriangleCounts,
-        const TArray<int32>& CollapseTarget,
+        const TArray<uint32>& CollapseTarget,
         const int32 VertexCount
         );
 
     static void RemoveEdges(
         TArray<FEdge>& Edges,
         TArray<FEdge>& EdgeBuffer,
-        const TArray<int32>& CollapseTarget
+        const TArray<uint32>& CollapseTarget
         );
 
     static void CompactVertices(
