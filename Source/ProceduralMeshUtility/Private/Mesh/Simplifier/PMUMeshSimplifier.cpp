@@ -29,9 +29,38 @@
 
 #include "Mesh/Simplifier/pcg_basic.h"
 
+#include "ProfilingDebugging/ScopedTimers.h"
+
 #define QEF_INCLUDE_IMPL
 #include "qef_simd.h"
 #undef QEF_INCLUDE_IMPL
+
+class FPMUScopeTimer : public FScopedDurationTimer
+{
+public:
+    FPMUScopeTimer()
+        : FScopedDurationTimer(AccumulatorValue)
+        , AccumulatorValue(0)
+    {
+    }
+
+    double GetTime()
+    {
+        return AccumulatorValue;
+    }
+
+private:
+    double AccumulatorValue;
+};
+
+const int32 FPMUMeshSimplifierQEF::MAX_TRIANGLES_PER_VERTEX;
+
+void FPMUMeshSimplifierQEF::SanitizeOptions(FPMUMeshSimplifierOptions& Options)
+{
+    Options.EdgeFraction = FMath::Max(0.f, Options.EdgeFraction);
+    Options.MaxIteration = FMath::Max(0, Options.MaxIteration);
+    Options.TargetPercentage = FMath::Max(0.f, Options.TargetPercentage);
+}
 
 void FPMUMeshSimplifierQEF::Simplify(
     TArray<FVector>& DstPositions,
@@ -40,7 +69,7 @@ void FPMUMeshSimplifierQEF::Simplify(
     const TArray<FVector>& SrcPositions,
     const TArray<FVector>& SrcNormals,
     const TArray<uint32>& SrcIndices,
-    const FPMUMeshSimplifierOptions& Options
+    FPMUMeshSimplifierOptions Options
     )
 {
     if (SrcPositions.Num() < 16 || SrcIndices.Num() < 48)
@@ -48,63 +77,86 @@ void FPMUMeshSimplifierQEF::Simplify(
         return;
     }
 
-    TArray<FVector> Positions(SrcPositions);
-    TArray<FVector> Normals(SrcNormals);
+    bool bHasNormals = SrcPositions.Num() == SrcNormals.Num();
+
+    SanitizeOptions(Options);
+
+    FPMUScopeTimer TIMER_BuildCandidateEdges;
+    FPMUScopeTimer TIMER_FindValidCollapses;
+    FPMUScopeTimer TIMER_CollapseEdges;
+    FPMUScopeTimer TIMER_GatherCollapsedTriangles;
+    FPMUScopeTimer TIMER_GatherCollapsedEdges;
+    FPMUScopeTimer TIMER_CompactVertices;
+
+    // Copy source geometry
+
     TArray<uint32> Triangles(SrcIndices);
+    TArray<FVector> Positions(SrcPositions);
+    TArray<FVector> Normals;
 
     TArray<FEdge> Edges;
-    Edges.Reserve(Triangles.Num());
+    TArray<uint32> VertexTriangleCounts;
+
+    if (bHasNormals)
+    {
+        Normals = SrcNormals;
+    }
+
+    // Build candidate edges
+
+    TIMER_BuildCandidateEdges.Start();
 
     BuildCandidateEdges(
         Edges,
+        VertexTriangleCounts,
         Triangles,
         Positions.Num()
         );
 
-    TArray<FEdge> EdgeBuffer;
-    TArray<uint32> TriBuffer;
+    TIMER_BuildCandidateEdges.Stop();
 
-    EdgeBuffer.Reserve(Edges.Num());
-    TriBuffer.Reserve(Triangles.Num());
+    // Collapse data containers
 
-    // Per vertex triangle count
-    TArray<int32> VertexTriangleCounts;
-    VertexTriangleCounts.SetNumZeroed(Positions.Num());
-
-    for (int32 i=0; i<Triangles.Num(); i++)
-    {
-        ++VertexTriangleCounts[Triangles[i]];
-    }
-
-    const int32 targetTriangleCount = Triangles.Num() * Options.TargetPercentage;
-    const int32 maxIterations = Options.MaxIterations;
-
-    TArray<FVector> CollapsePositions;
-    TArray<FVector> CollapseNormals;
-    TArray<uint32> CollapseValid;
+    TArray<uint32> CollapseCandidates;
     TArray<uint32> CollapseEdgeID;
     TArray<uint32> CollapseTarget;
+    TArray<FVector> CollapsePositions;
+    TArray<FVector> CollapseNormals;
 
+    // Reserve fixed size containers
+
+    CollapseCandidates.Reserve(Edges.Num());
     CollapsePositions.SetNumUninitialized(Edges.Num());
-    CollapseNormals.SetNumUninitialized(Edges.Num());
-    CollapseValid.Reserve(Edges.Num());
-    CollapseEdgeID.Reserve(Positions.Num());
-    CollapseTarget.Reserve(Positions.Num());
 
-    for (int32 i=0; i<maxIterations; ++i)
+    if (bHasNormals)
     {
-        const uint32 VertexCount = Positions.Num();
+        CollapseNormals.SetNumUninitialized(Edges.Num());
+    }
 
-        CollapseEdgeID.SetNumUninitialized(VertexCount);
-        CollapseTarget.SetNumUninitialized(VertexCount);
+    const int32 TargetTriangleCount = Triangles.Num() * Options.TargetPercentage;
+    const int32 MaxIteration = Options.MaxIteration;
 
-        FMemory::Memset(CollapseEdgeID.GetData(), 0xFF, VertexCount*CollapseEdgeID.GetTypeSize());
-        FMemory::Memset(CollapseTarget.GetData(), 0xFF, VertexCount*CollapseTarget.GetTypeSize());
+    // Collapse Iteration
 
-        CollapseValid.Reset();
+    for (int32 i=0; i<MaxIteration; ++i)
+    {
+        const uint32 PreCollapseVertexCount = Positions.Num();
 
-        const int32 countValidCollapse = FindValidCollapses(
-            CollapseValid, 
+        // Initialize iteration collapse data
+
+        CollapseEdgeID.SetNumUninitialized(PreCollapseVertexCount);
+        CollapseTarget.SetNumUninitialized(PreCollapseVertexCount);
+
+        FMemory::Memset(CollapseEdgeID.GetData(), 0xFF, PreCollapseVertexCount*CollapseEdgeID.GetTypeSize());
+        FMemory::Memset(CollapseTarget.GetData(), 0xFF, PreCollapseVertexCount*CollapseTarget.GetTypeSize());
+
+        CollapseCandidates.Reset();
+
+        // Find valid collapses
+
+        TIMER_FindValidCollapses.Start();
+        const int32 ValidCollapseCount = FindValidCollapses(
+            CollapseCandidates, 
             CollapseEdgeID,
             CollapsePositions,
             CollapseNormals,
@@ -114,66 +166,103 @@ void FPMUMeshSimplifierQEF::Simplify(
             VertexTriangleCounts,
             Options
             );
+        TIMER_FindValidCollapses.Stop();
 
         // No valid collapses, break
-        if (countValidCollapse == 0)
+        if (ValidCollapseCount == 0)
         {
             break;
         }
 
+        // Collapse valid edge geometry
+
+        TIMER_CollapseEdges.Start();
         CollapseEdges(
             Positions,
             Normals,
             CollapseTarget,
             Edges,
-            CollapseValid,
+            CollapseCandidates,
             CollapseEdgeID,
             CollapsePositions,
             CollapseNormals
             );
+        TIMER_CollapseEdges.Stop();
 
-        RemoveTriangles(
+        // Gather collapsed geometry
+
+        const int32 PostCollapseVertexCount = Positions.Num();
+
+        TIMER_GatherCollapsedTriangles.Start();
+        GatherCollapsedTriangles(
             Triangles,
-            TriBuffer,
             VertexTriangleCounts,
             CollapseTarget,
-            Positions.Num()
+            PostCollapseVertexCount
             );
+        TIMER_GatherCollapsedTriangles.Stop();
 
-        RemoveEdges(
+        TIMER_GatherCollapsedEdges.Start();
+        GatherCollapsedEdges(
             Edges,
-            EdgeBuffer,
             CollapseTarget
             );
+        TIMER_GatherCollapsedEdges.Stop();
 
         // Triangle result count reached target triangle count, break
-        if (Triangles.Num() < targetTriangleCount)
+        if (Triangles.Num() < TargetTriangleCount)
         {
             break;
         }
     }
 
+    // Generate compact geometry and assign output
+
+    TIMER_CompactVertices.Start();
+
     CompactVertices(Positions, Normals, Triangles);
 
-    DstPositions = Positions;
-    DstNormals = Normals;
-    DstIndices = Triangles;
+    DstIndices = MoveTemp(Triangles);
+    DstPositions = MoveTemp(Positions);
+
+    if (bHasNormals)
+    {
+        DstNormals = MoveTemp(Normals);
+    }
+
+    TIMER_CompactVertices.Stop();
+
+    UE_LOG(LogTemp,Warning, TEXT("TIMER_BuildCandidateEdges: %f"), TIMER_BuildCandidateEdges.GetTime());
+    UE_LOG(LogTemp,Warning, TEXT("TIMER_FindValidCollapses: %f"), TIMER_FindValidCollapses.GetTime());
+    UE_LOG(LogTemp,Warning, TEXT("TIMER_CollapseEdges: %f"), TIMER_CollapseEdges.GetTime());
+    UE_LOG(LogTemp,Warning, TEXT("TIMER_GatherCollapsedTriangles: %f"), TIMER_GatherCollapsedTriangles.GetTime());
+    UE_LOG(LogTemp,Warning, TEXT("TIMER_GatherCollapsedEdges: %f"), TIMER_GatherCollapsedEdges.GetTime());
+    UE_LOG(LogTemp,Warning, TEXT("TIMER_CompactVertices: %f"), TIMER_CompactVertices.GetTime());
 }
 
 void FPMUMeshSimplifierQEF::BuildCandidateEdges(
     TArray<FEdge>& Edges,
+    TArray<uint32>& VertexTriangleCounts,
     const TArray<uint32>& Triangles,
     const int32 VertexCount
     )
 {
+    Edges.Reserve(Triangles.Num());
+    VertexTriangleCounts.SetNumZeroed(VertexCount);
+
     for (int32 i=0; i<Triangles.Num(); i+=3)
     {
         const uint32 vi0 = Triangles[i  ];
         const uint32 vi1 = Triangles[i+1];
         const uint32 vi2 = Triangles[i+2];
+
         Edges.Emplace(FMath::Min(vi0, vi1), FMath::Max(vi0, vi1));
         Edges.Emplace(FMath::Min(vi0, vi2), FMath::Max(vi0, vi2));
         Edges.Emplace(FMath::Min(vi1, vi2), FMath::Max(vi1, vi2));
+
+        ++VertexTriangleCounts[vi0];
+        ++VertexTriangleCounts[vi1];
+        ++VertexTriangleCounts[vi2];
     }
 
     Edges.Sort(
@@ -182,28 +271,29 @@ void FPMUMeshSimplifierQEF::BuildCandidateEdges(
             return lhs.idx_ < rhs.idx_;
         } );
 
-    TArray<FEdge> filteredEdges;
-    TArray<uint8> boundaryVerts;
+    TArray<FEdge> FilteredEdges;
+    TArray<uint8> BoundaryVerts;
 
-    filteredEdges.Reserve(Edges.Num());
-    boundaryVerts.SetNumZeroed(VertexCount);
+    FilteredEdges.Reserve(Edges.Num());
+    BoundaryVerts.SetNumZeroed(VertexCount);
 
     FEdge prev = Edges[0];
+    FEdge curr;
 
     for (int32 count=1, idx=1; idx<Edges.Num(); idx++)
     {
-        const FEdge curr = Edges[idx];
+        curr = Edges[idx];
 
         if (curr.idx_ != prev.idx_)
         {
             if (count == 1)
             {
-                boundaryVerts[prev.min_] = 1;
-                boundaryVerts[prev.max_] = 1;
+                BoundaryVerts[prev.min_] = 1;
+                BoundaryVerts[prev.max_] = 1;
             }
             else 
             {
-                filteredEdges.Emplace(prev);
+                FilteredEdges.Emplace(prev);
             }
 
             count = 1;
@@ -218,9 +308,9 @@ void FPMUMeshSimplifierQEF::BuildCandidateEdges(
 
     Edges.Reset();
 
-    for (FEdge& Edge: filteredEdges)
+    for (FEdge& Edge : FilteredEdges)
     {
-        if (!boundaryVerts[Edge.min_] && !boundaryVerts[Edge.max_])
+        if (!BoundaryVerts[Edge.min_] && !BoundaryVerts[Edge.max_])
         {
             Edges.Emplace(Edge);
         }
@@ -228,19 +318,30 @@ void FPMUMeshSimplifierQEF::BuildCandidateEdges(
 }
 
 int32 FPMUMeshSimplifierQEF::FindValidCollapses(
-    TArray<uint32>& CollapseValid, 
+    TArray<uint32>& CollapseCandidates, 
     TArray<uint32>& CollapseEdgeID, 
     TArray<FVector>& CollapsePositions,
     TArray<FVector>& CollapseNormals,
     const TArray<FEdge>& Edges,
     const TArray<FVector>& Positions,
     const TArray<FVector>& Normals,
-    const TArray<int32>& VertexTriangleCounts,
+    const TArray<uint32>& VertexTriangleCounts,
     const FPMUMeshSimplifierOptions& Options
     )
 {
+    const int32 VertexCount = Positions.Num();
     const int32 EdgeCount = Edges.Num();
     const int32 numRandomEdges = EdgeCount * Options.EdgeFraction;
+    const bool bHasNormals = Positions.Num() == Normals.Num();
+
+    FPMUScopeTimer TIMER_RandomEdge;
+    FPMUScopeTimer TIMER_EdgeCostInit;
+
+    FPMUScopeTimer TIMER_IterateEdge;
+    FPMUScopeTimer TIMER_QEF;
+    FPMUScopeTimer TIMER_EdgeCost;
+
+    TIMER_RandomEdge.Start();
 
     FPMUPCG::FRNG Rand;
     FPMUPCG::pcg32_srandom_r(&Rand, Options.Seed, 1337U);
@@ -256,83 +357,158 @@ int32 FPMUMeshSimplifierQEF::FindValidCollapses(
     // Sort the edges to improve locality
     randomEdges.Sort();
 
-    TArray<float> minEdgeCost;
-    minEdgeCost.Init(BIG_NUMBER, Positions.Num());
+    TIMER_RandomEdge.Stop();
 
-    int32 validCollapses = 0;
+    TIMER_EdgeCostInit.Start();
+
+#if 0
+    TMap<uint32, float> EdgeCostMap;
+    EdgeCostMap.Reserve(VertexCount);
+#else
+    TArray<float> EdgeCostMap;
+    EdgeCostMap.Init(BIG_NUMBER, VertexCount);
+#endif
+
+    TIMER_EdgeCostInit.Stop();
+
+    const float MaxEdgeSizeSq = Options.MaxEdgeSize * Options.MaxEdgeSize;
+    int32 ValidCollapseCount = 0;
+
+    TIMER_IterateEdge.Start();
 
     for (uint32 EdgeId : randomEdges)
     {
         const FEdge& Edge(Edges[EdgeId]);
         const FVector& vMin(Positions[Edge.min_]);
         const FVector& vMax(Positions[Edge.max_]);
-        const FVector& nMin(Normals[Edge.min_]);
-        const FVector& nMax(Normals[Edge.max_]);
+        FVector nMin;
+        FVector nMax;
 
-        // Prevent collapses below angle threshold
-        const float cosAngle = nMin | nMax;
-        if (cosAngle < Options.MinAngleCosine)
+        if (bHasNormals)
+        {
+            nMin = Normals[Edge.min_];
+            nMax = Normals[Edge.max_];
+        }
+        else
+        {
+            nMin = FVector::UpVector;
+            nMax = FVector::UpVector;
+        }
+
+        // Skip edge below angle threshold
+        const float EdgeNormalDot = nMin | nMax;
+        if (EdgeNormalDot < Options.MinAngleCosine)
         {
             continue;
         }
 
-        // Prevent collapses above maximum edge size
-        const float edgeSizeSq = (vMax - vMin).SizeSquared();
-        if (edgeSizeSq > (Options.MaxEdgeSize * Options.MaxEdgeSize))
+        // Skip edge above maximum size
+        const float EdgeSizeSq = (vMax - vMin).SizeSquared();
+        if (EdgeSizeSq > MaxEdgeSizeSq)
         {
             continue;
         }
 
-        const int32 degree = VertexTriangleCounts[Edge.min_] + VertexTriangleCounts[Edge.max_];
-        if (degree > COLLAPSE_MAX_DEGREE)
+        // Skip edge with too many end points connection
+        const int32 TriCountPerEdge = VertexTriangleCounts[Edge.min_] + VertexTriangleCounts[Edge.max_];
+        if (TriCountPerEdge > MAX_TRIANGLES_PER_VERTEX)
         {
             continue;
         }
 
-        //__declspec(align(16)) float pos[4];
-        FVector pos;
-        //FVertex data[2] = { vMin, vMax };
+        FVector CollapsePosition;
         FVector posData[2] = { vMin, vMax };
         FVector nrmData[2] = { nMin, nMax };
 
+        TIMER_QEF.Start();
+
         // Solve quadratic error function for points
-        float error = qef_solve_from_points_3d(&posData[0].X, &nrmData[0].X, 2, &pos.X);
-        if (error > 0.f)
-        {
-            error = 1.f / error;
-        }
+        float EdgeCost;
+        EdgeCost = qef_solve_from_points_3d(&posData[0].X, &nrmData[0].X, 2, &CollapsePosition.X);
+        EdgeCost = (EdgeCost > 0.f) ? (1.f/EdgeCost) : 0.f;
+
+        TIMER_QEF.Stop();
 
         // Avoid vertices becoming a 'hub' for lots of edges by penalising collapses
-        // which will lead to a vertex with degree > 10
-        const int32 penalty = FMath::Max(0, degree-10);
-        error += penalty * (Options.MaxError * 0.1f);
+        // which will lead to a vertex with TriCountPerEdge > 10
+        const int32 penalty = FMath::Max(0, TriCountPerEdge-10);
+        EdgeCost += penalty * (Options.MaxError * .1f);
 
-        if (error > Options.MaxError)
+        if (EdgeCost > Options.MaxError)
         {
             continue;
         }
 
-        CollapseValid.Emplace(EdgeId);
+        // Record edge end points minimum edge cost
 
-        CollapseNormals[EdgeId] = (nMin+nMax) * 0.5f;
-        CollapsePositions[EdgeId] = pos;
+        TIMER_EdgeCost.Start();
 
-        if (error < minEdgeCost[Edge.min_])
+#if 0
+        float* PrevEdgeMinCost = EdgeCostMap.Find(Edge.min_);
+        float* PrevEdgeMaxCost = EdgeCostMap.Find(Edge.max_);
+
+        if (!PrevEdgeMinCost)
         {
-            minEdgeCost[Edge.min_] = error;
+            EdgeCostMap.Emplace(Edge.min_, EdgeCost);
+            CollapseEdgeID[Edge.min_] = EdgeId;
+        }
+        else
+        if (EdgeCost < *PrevEdgeMinCost)
+        {
+            *PrevEdgeMinCost = EdgeCost;
             CollapseEdgeID[Edge.min_] = EdgeId;
         }
 
-        if (error < minEdgeCost[Edge.max_])
+        if (!PrevEdgeMaxCost)
         {
-            minEdgeCost[Edge.max_] = error;
+            EdgeCostMap.Emplace(Edge.max_, EdgeCost);
             CollapseEdgeID[Edge.max_] = EdgeId;
         }
+        else
+        if (EdgeCost < *PrevEdgeMaxCost)
+        {
+            *PrevEdgeMaxCost = EdgeCost;
+            CollapseEdgeID[Edge.max_] = EdgeId;
+        }
+#else
+        if (EdgeCost < EdgeCostMap[Edge.min_])
+        {
+            EdgeCostMap[Edge.min_] = EdgeCost;
+            CollapseEdgeID[Edge.min_] = EdgeId;
+        }
 
-        ++validCollapses;
+        if (EdgeCost < EdgeCostMap[Edge.max_])
+        {
+            EdgeCostMap[Edge.max_] = EdgeCost;
+            CollapseEdgeID[Edge.max_] = EdgeId;
+        }
+#endif
+
+        TIMER_EdgeCost.Stop();
+
+        // Assign collapse result
+
+        CollapseCandidates.Emplace(EdgeId);
+        CollapsePositions[EdgeId] = CollapsePosition;
+
+        if (bHasNormals)
+        {
+            CollapseNormals[EdgeId] = (nMin+nMax) * .5f;
+        }
+
+        ++ValidCollapseCount;
     }
 
-    return validCollapses;
+    TIMER_IterateEdge.Stop();
+
+    //UE_LOG(LogTemp,Warning, TEXT("TIMER_RandomEdge: %f"), TIMER_RandomEdge.GetTime());
+    //UE_LOG(LogTemp,Warning, TEXT("TIMER_EdgeCostInit: %f"), TIMER_EdgeCostInit.GetTime());
+
+    //UE_LOG(LogTemp,Warning, TEXT("TIMER_QEF: %f"), TIMER_QEF.GetTime());
+    //UE_LOG(LogTemp,Warning, TEXT("TIMER_EdgeCost: %f"), TIMER_EdgeCost.GetTime());
+    //UE_LOG(LogTemp,Warning, TEXT("TIMER_IterateEdge: %f"), TIMER_IterateEdge.GetTime());
+
+    return ValidCollapseCount;
 }
 
 void FPMUMeshSimplifierQEF::CollapseEdges(
@@ -340,56 +516,62 @@ void FPMUMeshSimplifierQEF::CollapseEdges(
     TArray<FVector>& Normals,
     TArray<uint32>& CollapseTarget,
     const TArray<FEdge>& Edges,
-    const TArray<uint32>& CollapseValid,
+    const TArray<uint32>& CollapseCandidates,
     const TArray<uint32>& CollapseEdgeID,
     const TArray<FVector>& CollapsePositions,
     const TArray<FVector>& CollapseNormals
     )
 {
-    for (uint32 EdgeId: CollapseValid)
+    const bool bHasNormals = CollapsePositions.Num() == CollapseNormals.Num();
+
+    for (uint32 EdgeId: CollapseCandidates)
     {
         const FEdge& Edge(Edges[EdgeId]);
 
-        if (CollapseEdgeID[Edge.min_] == EdgeId && CollapseEdgeID[Edge.max_] == EdgeId)
+        if (EdgeId == CollapseEdgeID[Edge.min_] && EdgeId == CollapseEdgeID[Edge.max_])
         {
             CollapseTarget[Edge.max_] = Edge.min_;
             Positions[Edge.min_] = CollapsePositions[EdgeId];
-            Normals[Edge.min_] = CollapseNormals[EdgeId];
+
+            if (bHasNormals)
+            {
+                Normals[Edge.min_] = CollapseNormals[EdgeId];
+            }
         }
     }
 }
 
-int32 FPMUMeshSimplifierQEF::RemoveTriangles(
-    TArray<uint32>& Tris,
-    TArray<uint32>& TriBuffer,
-    TArray<int32>& VertexTriangleCounts,
+int32 FPMUMeshSimplifierQEF::GatherCollapsedTriangles(
+    TArray<uint32>& Triangles,
+    TArray<uint32>& VertexTriangleCounts,
     const TArray<uint32>& CollapseTarget,
     const int32 VertexCount
     )
 {
-    int32 removedCount = 0;
+    int32 RemoveCount = 0;
 
     VertexTriangleCounts.Reset();
     VertexTriangleCounts.SetNumZeroed(VertexCount);
 
-    TriBuffer.Reset();
+    TArray<uint32> TriBuffer;
+    TriBuffer.Reserve(Triangles.Num());
 
-    for (int32 i0=0; i0<Tris.Num(); i0+=3)
+    for (int32 i0=0; i0<Triangles.Num(); i0+=3)
     {
         int32 i1 = i0+1;
         int32 i2 = i0+2;
 
-        const uint32 t0 = CollapseTarget[Tris[i0]];
-        const uint32 t1 = CollapseTarget[Tris[i1]];
-        const uint32 t2 = CollapseTarget[Tris[i2]];
+        const uint32 t0 = CollapseTarget[Triangles[i0]];
+        const uint32 t1 = CollapseTarget[Triangles[i1]];
+        const uint32 t2 = CollapseTarget[Triangles[i2]];
 
-        if (t0 != -1) Tris[i0] = t0;
-        if (t1 != -1) Tris[i1] = t1;
-        if (t2 != -1) Tris[i2] = t2;
+        if (t0 != -1) Triangles[i0] = t0;
+        if (t1 != -1) Triangles[i1] = t1;
+        if (t2 != -1) Triangles[i2] = t2;
 
-        uint32 vi0 = Tris[i0];
-        uint32 vi1 = Tris[i1];
-        uint32 vi2 = Tris[i2];
+        uint32 vi0 = Triangles[i0];
+        uint32 vi1 = Triangles[i1];
+        uint32 vi2 = Triangles[i2];
 
         // Skip triangles with duplicate indices
         if (vi0 == vi1 ||
@@ -397,7 +579,7 @@ int32 FPMUMeshSimplifierQEF::RemoveTriangles(
             vi1 == vi2
             )
         {
-            removedCount++;
+            RemoveCount++;
             continue;
         }
 
@@ -410,18 +592,18 @@ int32 FPMUMeshSimplifierQEF::RemoveTriangles(
         TriBuffer.Emplace(vi2);
     }
 
-    Swap(Tris, TriBuffer);
+    Triangles = MoveTemp(TriBuffer);
 
-    return removedCount;
+    return RemoveCount;
 }
 
-void FPMUMeshSimplifierQEF::RemoveEdges(
+void FPMUMeshSimplifierQEF::GatherCollapsedEdges(
     TArray<FEdge>& Edges,
-    TArray<FEdge>& EdgeBuffer,
     const TArray<uint32>& CollapseTarget
     )
 {
-    EdgeBuffer.Reset();
+    TArray<FEdge> EdgeBuffer;
+    EdgeBuffer.Reserve(Edges.Num());
 
     for (FEdge& Edge: Edges)
     {
@@ -445,7 +627,7 @@ void FPMUMeshSimplifierQEF::RemoveEdges(
         }
     }
 
-    Swap(Edges, EdgeBuffer);
+    Edges = MoveTemp(EdgeBuffer);
 }
 
 void FPMUMeshSimplifierQEF::CompactVertices(
@@ -455,40 +637,63 @@ void FPMUMeshSimplifierQEF::CompactVertices(
     )
 {
     const int32 VertexCount = Positions.Num();
+    const bool bHasNormals = Positions.Num() == Normals.Num();
 
-	TArray<uint8> vertexUsed;
-	vertexUsed.SetNumZeroed(VertexCount);
+    // Gather used vertex list
+
+	TArray<uint8> VertexUsed;
+	VertexUsed.SetNumZeroed(VertexCount);
 
 	for (int32 i=0; i<Triangles.Num(); ++i)
 	{
-		vertexUsed[Triangles[i]] = 1;
+		VertexUsed[Triangles[i]] = 1;
 	}
 
-	TArray<FVector> compactPositions;
-	TArray<FVector> compactNormals;
-	TArray<uint32> remappedVertexIndices;
+    // Create compact containers
 
-    compactPositions.Reserve(VertexCount);
-    compactNormals.Reserve(VertexCount);
-	remappedVertexIndices.SetNumUninitialized(VertexCount);
+	TArray<FVector> CompactPositions;
+	TArray<FVector> CompactNormals;
+	TArray<uint32> VertexIndexRemapTable;
+
+    CompactPositions.Reserve(VertexCount);
+	VertexIndexRemapTable.SetNumUninitialized(VertexCount);
+
+    if (bHasNormals)
+    {
+        CompactNormals.Reserve(VertexCount);
+    }
+
+    // Generate compact geometry
 
 	for (int32 i=0; i<VertexCount; i++)
 	{
-		if (vertexUsed[i])
+		if (VertexUsed[i])
 		{
-			remappedVertexIndices[i] = compactPositions.Num();
-			compactPositions.Emplace(Positions[i]);
-			compactNormals.Emplace(Normals[i]);
+			VertexIndexRemapTable[i] = CompactPositions.Num();
+			CompactPositions.Emplace(Positions[i]);
+
+            if (bHasNormals)
+            {
+                CompactNormals.Emplace(Normals[i]);
+            }
 		}
 	}
 
+    // Remap triangle indices
+
 	for (int32 i=0; i<Triangles.Num(); ++i)
 	{
-        Triangles[i] = remappedVertexIndices[Triangles[i]];
+        Triangles[i] = VertexIndexRemapTable[Triangles[i]];
 	}
 
-    Positions = MoveTemp(compactPositions);
-    Normals = MoveTemp(compactNormals);
+    // Move output
+
+    Positions = MoveTemp(CompactPositions);
+
+    if (bHasNormals)
+    {
+        Normals = MoveTemp(CompactNormals);
+    }
 }
 
 void FPMUMeshSimplifier::SimplifyMeshSection(FPMUMeshSectionRef SectionRef, const FPMUMeshSimplifierOptions& Options)
@@ -518,15 +723,19 @@ void FPMUMeshSimplifier::SimplifyMeshSection(FPMUMeshSectionRef SectionRef, cons
     TArray<FVector> DstNormals;
     TArray<uint32> DstIndices;
 
-    FPMUMeshSimplifierQEF::Simplify(
-        DstPositions,
-        DstNormals,
-        DstIndices,
-        Positions,
-        Normals,
-        Indices,
-        Options
-        );
+    {
+        FScopedDurationTimeLogger Timer(TEXT("FPMUMeshSimplifier::SimplifyMeshSection()"));
+
+        FPMUMeshSimplifierQEF::Simplify(
+            DstPositions,
+            DstNormals,
+            DstIndices,
+            Positions,
+            Normals,
+            Indices,
+            Options
+            );
+    }
 
     Section.Positions = DstPositions;
     Section.Tangents.SetNum(DstNormals.Num()*2, true);

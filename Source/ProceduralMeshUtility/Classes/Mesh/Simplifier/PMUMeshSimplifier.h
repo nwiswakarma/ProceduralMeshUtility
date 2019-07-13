@@ -35,36 +35,38 @@ class FPMUMeshSimplifierQEF
 {
     union FEdge
     {
+        FEdge() = default;
+
         FEdge(uint32 _minIndex, uint32 _maxIndex)
             : min_(_minIndex)
             , max_(_maxIndex)
         {
         }
 
-        uint64 idx_ = 0;
+        uint64 idx_;
         struct { uint32 min_, max_; };
     };
 
-    static const int32 COLLAPSE_MAX_DEGREE = 16;
-    static const int32 MAX_TRIANGLES_PER_VERTEX = COLLAPSE_MAX_DEGREE;
+    static const int32 MAX_TRIANGLES_PER_VERTEX = 16;
 
-    FPMUMeshSimplifierOptions Options;
+    static void SanitizeOptions(FPMUMeshSimplifierOptions& Options);
 
     static void BuildCandidateEdges(
         TArray<FEdge>& Edges,
+        TArray<uint32>& VertexTriangleCounts,
         const TArray<uint32>& Triangles,
         const int32 VertexCount
         );
 
     static int32 FindValidCollapses(
-        TArray<uint32>& CollapseValid, 
+        TArray<uint32>& CollapseCandidates, 
         TArray<uint32>& CollapseEdgeID, 
         TArray<FVector>& CollapsePositions,
         TArray<FVector>& CollapseNormals,
         const TArray<FEdge>& Edges,
         const TArray<FVector>& Positions,
         const TArray<FVector>& Normals,
-        const TArray<int32>& VertexTriangleCounts,
+        const TArray<uint32>& VertexTriangleCounts,
         const FPMUMeshSimplifierOptions& Options
         );
 
@@ -73,23 +75,21 @@ class FPMUMeshSimplifierQEF
         TArray<FVector>& Normals,
         TArray<uint32>& CollapseTarget,
         const TArray<FEdge>& Edges,
-        const TArray<uint32>& CollapseValid,
+        const TArray<uint32>& CollapseCandidates,
         const TArray<uint32>& CollapseEdgeID,
         const TArray<FVector>& CollapsePositions,
         const TArray<FVector>& CollapseNormals
         );
 
-    static int32 RemoveTriangles(
-        TArray<uint32>& Tris,
-        TArray<uint32>& TriBuffer,
-        TArray<int32>& VertexTriangleCounts,
+    static int32 GatherCollapsedTriangles(
+        TArray<uint32>& Triangles,
+        TArray<uint32>& VertexTriangleCounts,
         const TArray<uint32>& CollapseTarget,
         const int32 VertexCount
         );
 
-    static void RemoveEdges(
+    static void GatherCollapsedEdges(
         TArray<FEdge>& Edges,
-        TArray<FEdge>& EdgeBuffer,
         const TArray<uint32>& CollapseTarget
         );
 
@@ -108,8 +108,28 @@ public:
         const TArray<FVector>& SrcPositions,
         const TArray<FVector>& SrcNormals,
         const TArray<uint32>& SrcIndices,
-        const FPMUMeshSimplifierOptions& Options
+        FPMUMeshSimplifierOptions Options
         );
+
+    FORCEINLINE static void Simplify(
+        TArray<FVector>& DstPositions,
+        TArray<uint32>& DstIndices,
+        const TArray<FVector>& SrcPositions,
+        const TArray<uint32>& SrcIndices,
+        FPMUMeshSimplifierOptions Options
+        )
+    {
+        TArray<FVector> DummyNormals;
+        Simplify(
+            DstPositions,
+            DummyNormals,
+            DstIndices,
+            SrcPositions,
+            DummyNormals,
+            SrcIndices,
+            Options
+            );
+    }
 };
 
 class PROCEDURALMESHUTILITY_API FPMUMeshSimplifier

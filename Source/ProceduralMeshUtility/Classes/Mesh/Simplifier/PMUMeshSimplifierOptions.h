@@ -48,15 +48,15 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshSimplifierOptions
 	// candidates for collapsing. There is likely a sweet spot here trading off against number 
 	// of edges processed vs number of invalid collapses generated due to collisions 
 	// (the more edges that are processed the higher the chance of collisions happening)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
 	float EdgeFraction = 0.125f;
 
 	// Stop simplfying after a given number of iterations
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 MaxIterations = 10;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
+	int32 MaxIteration = 10;
 
 	// And/or stop simplifying when we've reached a percentage of the input triangles
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta=(ClampMin="0", UIMin="0"))
 	float TargetPercentage = 0.05f;
 
 	// The maximum allowed error when collapsing an edge (error is calculated as 1.0/qef_error)
