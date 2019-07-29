@@ -104,13 +104,8 @@ void UPMUPrefabBuilder::InitializePrefabs()
 
         const FStaticMeshVertexBuffers& VBs(GetVertexBuffers(Mesh, LODIndex));
         const FPositionVertexBuffer& PositionVB(VBs.PositionVertexBuffer);
-        const FStaticMeshVertexBuffer& UVTanVB(VBs.StaticMeshVertexBuffer);
-        const FColorVertexBuffer& ColorVB(VBs.ColorVertexBuffer);
 
-        int32 NumVertices = PositionVB.GetNumVertices();
-
-        check(NumVertices == UVTanVB.GetNumVertices());
-        check(NumVertices == ColorVB.GetNumVertices());
+        const int32 NumVertices = PositionVB.GetNumVertices();
 
         // Generate sorted index by distance to X zero
 
@@ -128,28 +123,6 @@ void UPMUPrefabBuilder::InitializePrefabs()
                 return PositionVB.VertexPosition(a).X < PositionVB.VertexPosition(b).X;
             } );
 
-        // Find surface and extrude bridge indices
-
-        TArray<uint32> SurfaceIndices;
-        TArray<uint32> ExtrudeIndices;
-
-        for (int32 i=0; i<NumVertices; ++i)
-        {
-            const uint32 vi = SortedIndexAlongX[i];
-            const FVector& Position(PositionVB.VertexPosition(vi));
-            const FColor& Color(ColorVB.VertexColor(vi));
-
-            if (Color.R > 127)
-            {
-                SurfaceIndices.Emplace(vi);
-            }
-            else
-            if (Color.G > 127)
-            {
-                ExtrudeIndices.Emplace(vi);
-            }
-        }
-
         // Generate new prefab data
 
         PreparedPrefabs.SetNum(PreparedPrefabs.Num()+1);
@@ -163,8 +136,6 @@ void UPMUPrefabBuilder::InitializePrefabs()
         Prefab.Bounds.Max = FVector2D(Bounds.Max);
         Prefab.Length = Prefab.Bounds.GetSize().X;
         Prefab.SortedIndexAlongX = MoveTemp(SortedIndexAlongX);
-        Prefab.SurfaceIndices = MoveTemp(SurfaceIndices);
-        Prefab.ExtrudeIndices = MoveTemp(ExtrudeIndices);
 
         check(Prefab.Length > 0.f);
     }
@@ -241,6 +212,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
     check(PointCount > 1);
     check(! bClosedPoly || PointCount > 3);
 
+    const bool bHasDecorator = HasDecorator();
     const float EndDistance = Distances.Last();
 
     const FPrefabData& ShortestPrefab(GetSortedPrefab(0));
@@ -417,6 +389,12 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
 
             // Expand bounding box
             GeneratedSection.SectionLocalBox += DstPositions[DstIndex];
+
+            // Call decorator on position transform
+            if (bHasDecorator)
+            {
+                Decorator->OnTransformPosition(GeneratedSection, DstIndex);
+            }
         }
     }
 }
@@ -446,14 +424,17 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
         const FStaticMeshVertexBuffers& VBs(GetVertexBuffers(Prefab));
         const FPositionVertexBuffer& SrcPositions(VBs.PositionVertexBuffer);
         const FStaticMeshVertexBuffer& SrcUVTans(VBs.StaticMeshVertexBuffer);
+        const FColorVertexBuffer& SrcColors(VBs.ColorVertexBuffer);
         const uint32 NumVertices = SrcPositions.GetNumVertices();
         const bool bHasUV = SrcUVTans.GetNumTexCoords() > 0;
+        const bool bHasColor = SrcColors.GetNumVertices() == NumVertices;
 
         check(SrcUVTans.GetNumVertices() == NumVertices);
 
         TArray<FVector>& DstPositions(PrefabBuffers->Positions);
         TArray<uint32>& DstTangents(PrefabBuffers->Tangents);
         TArray<FVector2D>& DstUVs(PrefabBuffers->UVs);
+        TArray<FColor>& DstColors(PrefabBuffers->Colors);
 
         DstPositions.SetNumUninitialized(NumVertices);
         DstTangents.SetNumUninitialized(NumVertices*2);
@@ -461,6 +442,11 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
         if (bHasUV)
         {
             DstUVs.SetNumUninitialized(NumVertices);
+        }
+
+        if (bHasColor)
+        {
+            DstColors.SetNumUninitialized(NumVertices);
         }
 
         for (uint32 i=0; i<NumVertices; ++i)
@@ -476,7 +462,14 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
             {
                 DstUVs[i] = SrcUVTans.GetVertexUV(i, 0);
             }
+
+            if (bHasColor)
+            {
+                DstColors[i] = SrcColors.VertexColor(i);
+            }
         }
+
+        check(DstPositions.Num() == (DstTangents.Num()/2));
 
         // Copy index buffer
 
@@ -495,8 +488,18 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
         }
     }
 
+    check(PrefabBuffers != nullptr);
+
     // Copy prefab from mapped buffers
-    return CopyPrefabToSection(OutSection, *PrefabBuffers);
+    uint32 VertexOffsetIndex = CopyPrefabToSection(OutSection, *PrefabBuffers);
+
+    // Call decorator on copy prefab
+    if (HasDecorator())
+    {
+        Decorator->OnCopyPrefabToSection(OutSection, Prefab, VertexOffsetIndex);
+    }
+
+    return VertexOffsetIndex;
 }
 
 uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, const FPrefabBuffers& PrefabBuffers)
@@ -506,30 +509,51 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, const
     const TArray<FVector>& SrcPositions(PrefabBuffers.Positions);
     const TArray<FVector2D>& SrcUVs(PrefabBuffers.UVs);
     const TArray<uint32>& SrcTangents(PrefabBuffers.Tangents);
+    const TArray<FColor>& SrcColors(PrefabBuffers.Colors);
     const TArray<uint32>& SrcIndices(PrefabBuffers.Indices);
 
     TArray<FVector>& DstPositions(OutSection.Positions);
     TArray<FVector2D>& DstUVs(OutSection.UVs);
     TArray<uint32>& DstTangents(OutSection.Tangents);
+    TArray<FColor>& DstColors(OutSection.Colors);
     TArray<uint32>& DstIndices(OutSection.Indices);
 
     const uint32 OffsetIndex = DstPositions.Num();
+    const uint32 TargetNumVertices = OffsetIndex + SrcPositions.Num();
 
     // Copy vertex buffers
 
     DstPositions.Append(SrcPositions);
     DstTangents.Append(SrcTangents);
 
+    check(TargetNumVertices == DstPositions.Num());
+
     // Copy UV buffer
-    if (SrcUVs.Num() == SrcPositions.Num())
+    if (PrefabBuffers.HasUVs())
     {
         DstUVs.Append(SrcUVs);
     }
     // Fill zeroed UV if prefab mesh have no valid UV buffer
     else
     {
-        DstUVs.SetNumZeroed(DstUVs.Num()+SrcPositions.Num(), false);
+        DstUVs.SetNumZeroed(TargetNumVertices, false);
     }
+
+    // Copy color buffer
+    if (PrefabBuffers.HasColors())
+    {
+        DstColors.Append(SrcColors);
+    }
+    // Fill zeroed color if prefab mesh have no valid color buffer
+    else
+    {
+        DstColors.SetNumZeroed(TargetNumVertices, false);
+    }
+
+    // Ensure all vertex buffers size match
+    check(TargetNumVertices == DstUVs.Num());
+    check(TargetNumVertices == (DstTangents.Num()/2));
+    check(TargetNumVertices == DstColors.Num());
 
     // Copy index buffer with offset
 

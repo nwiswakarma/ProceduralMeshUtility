@@ -49,6 +49,58 @@ struct PROCEDURALMESHUTILITY_API FPMUPrefabInputData
     FVector2D Offset;
 };
 
+struct PROCEDURALMESHUTILITY_API FPMUPrefabGenerationData
+{
+    const UStaticMesh* Mesh;
+    int32 LODIndex;
+    int32 SectionIndex;
+    FBox2D Bounds;
+    float Length;
+    TArray<uint32> SortedIndexAlongX;
+};
+
+struct PROCEDURALMESHUTILITY_API FPMUPrefabGenerationBuffers
+{
+    TArray<FVector> Positions;
+    TArray<FVector2D> UVs;
+    TArray<uint32> Tangents;
+    TArray<FColor> Colors;
+    TArray<uint32> Indices;
+
+    FORCEINLINE uint32 Num() const
+    {
+        return Positions.Num();
+    }
+
+    FORCEINLINE bool HasUVs() const
+    {
+        return Positions.Num() == Tangents.Num();
+    }
+
+    FORCEINLINE bool HasColors() const
+    {
+        return Positions.Num() == Colors.Num();
+    }
+};
+
+UCLASS(BlueprintType, Blueprintable)
+class PROCEDURALMESHUTILITY_API UPMUPrefabBuilderDecorator : public UObject
+{
+	GENERATED_BODY()
+
+public:
+
+    virtual void OnCopyPrefabToSection(FPMUMeshSection& Section, const FPMUPrefabGenerationData& Prefab, uint32 VertexOffsetIndex)
+    {
+        // Blank Implementation
+    }
+
+    virtual void OnTransformPosition(FPMUMeshSection& Section, uint32 VertexIndex)
+    {
+        // Blank Implementation
+    }
+};
+
 UCLASS(BlueprintType, Blueprintable)
 class PROCEDURALMESHUTILITY_API UPMUPrefabBuilder : public UObject
 {
@@ -56,26 +108,8 @@ class PROCEDURALMESHUTILITY_API UPMUPrefabBuilder : public UObject
 
 public:
 
-    struct FPrefabData
-    {
-        const UStaticMesh* Mesh;
-        int32 LODIndex;
-        int32 SectionIndex;
-        FBox2D Bounds;
-        float Length;
-        TArray<uint32> SortedIndexAlongX;
-        TArray<uint32> SurfaceIndices;
-        TArray<uint32> ExtrudeIndices;
-    };
-
-    struct FPrefabBuffers
-    {
-        TArray<FVector> Positions;
-        TArray<FVector2D> UVs;
-        TArray<uint32> Tangents;
-        TArray<uint32> Indices;
-    };
-
+    typedef FPMUPrefabGenerationData    FPrefabData;
+    typedef FPMUPrefabGenerationBuffers FPrefabBuffers;
     typedef TMap<const FPrefabData*, FPrefabBuffers> FPrefabBufferMap;
 
     TArray<FPrefabData> PreparedPrefabs;
@@ -83,6 +117,9 @@ public:
     bool bPrefabInitialized;
 
     FPMUMeshSection GeneratedSection;
+
+    UPROPERTY()
+    UPMUPrefabBuilderDecorator* Decorator;
 
     void AllocateSection(FPMUMeshSection& OutSection, uint32 NumVertices, uint32 NumIndices);
 
@@ -141,11 +178,25 @@ public:
     {
         return PreparedPrefabs.Num();
     }
-    
+
+    FORCEINLINE bool HasDecorator() const
+    {
+        return Decorator != nullptr;
+    }
+
+    FORCEINLINE void SetDecorator(UPMUPrefabBuilderDecorator* InDecorator)
+    {
+        Decorator = InDecorator;
+    }
+
     void ResetPrefabs();
     void InitializePrefabs();
+
     void BuildPrefabsAlongPoly(const TArray<FVector2D>& Points, bool bClosedPoly);
     void BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, bool bClosedPoly);
+
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Set Decorator"))
+    void K2_SetDecorator(UPMUPrefabBuilderDecorator* InDecorator);
 
     UFUNCTION(BlueprintCallable, meta=(DisplayName="Reset Prefabs"))
     void K2_ResetPrefabs();
@@ -156,6 +207,11 @@ public:
     UFUNCTION(BlueprintCallable, meta=(DisplayName="Get Generated Section"))
     FPMUMeshSectionRef K2_GetGeneratedSection();
 };
+
+FORCEINLINE_DEBUGGABLE void UPMUPrefabBuilder::K2_SetDecorator(UPMUPrefabBuilderDecorator* InDecorator)
+{
+    SetDecorator(InDecorator);
+}
 
 FORCEINLINE_DEBUGGABLE void UPMUPrefabBuilder::K2_ResetPrefabs()
 {
