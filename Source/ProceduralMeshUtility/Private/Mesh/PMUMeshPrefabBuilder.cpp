@@ -49,7 +49,21 @@ FIndexArrayView UPMUPrefabBuilder::GetIndexBuffer(const UStaticMesh& Mesh, int32
     return Mesh.RenderData->LODResources[LODIndex].IndexBuffer.GetArrayView();
 }
 
-void UPMUPrefabBuilder::GetPrefabGeometryCount(const FPrefabData& Prefab, uint32& OutNumVertices, uint32& OutNumIndices) const
+void UPMUPrefabBuilder::ResetDecorator()
+{
+    Decorator = NewObject<UPMUPrefabBuilderDecorator>(this);
+    Decorator->SetBuilder(this);
+}
+
+void UPMUPrefabBuilder::InitializeDecorator()
+{
+    if (! IsValid(Decorator))
+    {
+        ResetDecorator();
+    }
+}
+
+void UPMUPrefabBuilder::GetPrefabGeometryCount(uint32& OutNumVertices, uint32& OutNumIndices, const FPrefabData& Prefab) const
 {
     check(IsValidPrefab(Prefab));
 
@@ -135,6 +149,7 @@ void UPMUPrefabBuilder::InitializePrefabs()
         Prefab.Bounds.Min = FVector2D(Bounds.Min);
         Prefab.Bounds.Max = FVector2D(Bounds.Max);
         Prefab.Length = Prefab.Bounds.GetSize().X;
+        Prefab.AngleThreshold = Input.AngleThreshold;
         Prefab.SortedIndexAlongX = MoveTemp(SortedIndexAlongX);
 
         check(Prefab.Length > 0.f);
@@ -201,7 +216,8 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Points, b
 
 void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, bool bClosedPoly)
 {
-    int32 PointCount = Positions.Num();
+    const int32 PrefabCount = GetPreparedPrefabCount();
+    const int32 PointCount = Positions.Num();
 
     // Point buffers must match
     if (Tangents.Num() != PointCount || Distances.Num() != PointCount)
@@ -209,10 +225,13 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
         return;
     }
 
+    InitializeDecorator();
+
+    check(PrefabCount > 0);
     check(PointCount > 1);
     check(! bClosedPoly || PointCount > 3);
+    check(IsValid(Decorator));
 
-    const bool bHasDecorator = HasDecorator();
     const float EndDistance = Distances.Last();
 
     const FPrefabData& ShortestPrefab(GetSortedPrefab(0));
@@ -246,18 +265,75 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
     // Generate prefab for each occupied distance
 
     {
+        int32 LastOccupiedPointIndex = 0;
         float OccupiedDistance = 0.f;
 
-        enum { DEFAULT_PREFAB = 0 };
         static const float PREFAB_MINIMUM_SCALE = .4f;
+
+        Decorator->OnPreDistributePrefabAlongPolyline();
 
         while (OccupiedDistance < EndDistance)
         {
-            const FPrefabData& Prefab(GetSortedPrefab(DEFAULT_PREFAB));
+            //const uint32 PrefabIndex = Decorator->GetPrefabIndexAlongPolyline(LastOccupiedPointIndex, OccupiedDistance, EndDistance);
+            uint32 PrefabIndex = 0;
+            float RemainingDistance = OccupiedDistance-EndDistance;
+
+            // Find prefab to occupy along line, find start from the longest
+            for (int32 pi=(PrefabCount-1); pi>=0; --pi)
+            {
+                const FPrefabData& Prefab(GetSortedPrefab(pi));
+                const float PrefabLength = Prefab.Length;
+
+                // Make sure to not go past remaining line distance
+                if (PrefabLength > RemainingDistance)
+                {
+                    const float AngleThreshold = Prefab.AngleThreshold;
+                    bool bValidPrefab = true;
+
+                    // Find prefab by angle threshold to the current line point origin
+                    if (AngleThreshold > -1.f)
+                    {
+                        const FVector2D& LinePointOrigin(Tangents[LastOccupiedPointIndex]);
+                        const float DistanceThreshold = OccupiedDistance + PrefabLength + KINDA_SMALL_NUMBER;
+
+                        // Iterate over next line point within prefab distance
+                        for (int32 di=LastOccupiedPointIndex+1; (di<PointCount && DistanceThreshold>Distances[di]); ++di)
+                        {
+                            const FVector2D& NextPoint(Tangents[di]);
+                            const float Dot = LinePointOrigin | NextPoint;
+
+                            // Filter points within origin line point angle threshold
+                            if (Dot < AngleThreshold)
+                            {
+                                bValidPrefab = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Matching prefab found, break
+                    if (bValidPrefab)
+                    {
+                        PrefabIndex = pi;
+                        break;
+                    }
+                }
+            }
+
+            const FPrefabData& Prefab(GetSortedPrefab(PrefabIndex));
             const float PrefabLength = Prefab.Length;
             float Scale = 1.f;
 
             OccupiedDistance += PrefabLength;
+
+            // Find last occupied index
+
+            const float DistanceThreshold = OccupiedDistance + KINDA_SMALL_NUMBER;
+
+            for (int32 di=LastOccupiedPointIndex; (di<PointCount && DistanceThreshold>Distances[di]); ++di)
+            {
+                LastOccupiedPointIndex = di;
+            }
 
             // Prefab go past end distance, scale down
             if (OccupiedDistance >= EndDistance)
@@ -290,11 +366,13 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             uint32 PrefabNumVertices;
             uint32 PrefabNumIndices;
 
-            GetPrefabGeometryCount(Prefab, PrefabNumVertices, PrefabNumIndices);
+            GetPrefabGeometryCount(PrefabNumVertices, PrefabNumIndices, Prefab);
 
             NumVertices += PrefabNumVertices;
             NumIndices += PrefabNumIndices;
         }
+
+        Decorator->OnPostDistributePrefabAlongPolyline();
     }
 
     AllocateSection(GeneratedSection, NumVertices, NumIndices);
@@ -318,9 +396,12 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
 
         const FPrefabBuffers& PrefabBuffers(PrefabBufferMap.FindChecked(&Prefab));
         const TArray<FVector>& SrcPositions(PrefabBuffers.Positions);
+        const TArray<FVector>& SrcTangentX(PrefabBuffers.TangentX);
+        const TArray<FVector4>& SrcTangentZ(PrefabBuffers.TangentZ);
         const TArray<uint32>& IndexAlongX(Prefab.SortedIndexAlongX);
 
         TArray<FVector>& DstPositions(GeneratedSection.Positions);
+        TArray<uint32>& DstTangents(GeneratedSection.Tangents);
 
         float StartDistance = CurrentDistance;
 
@@ -329,20 +410,21 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             const uint32 SrcIndex = IndexAlongX[vix];
             const uint32 DstIndex = VertexOffsetIndex+SrcIndex;
             const FVector SrcPos(SrcPositions[SrcIndex]);
+            const FVector SrcTanX(SrcTangentX[SrcIndex]);
+            const FVector4 SrcTanZ(SrcTangentZ[SrcIndex]);
 
             CurrentDistance = StartDistance+SrcPos.X*PrefabScaleX;
-            const float DistanceThreshold = CurrentDistance+KINDA_SMALL_NUMBER;
 
-            // Find current edge point along prefab mesh X
+            // Find current line point index along transformed prefab mesh X
 
+            const float DistanceThreshold = CurrentDistance + KINDA_SMALL_NUMBER;
             for (int32 di=PointIndex; (di<PointCount && DistanceThreshold>Distances[di]); ++di)
             {
                 PointIndex = di;
             }
 
-            // Transform vertex
+            // Calculate tangent along line
 
-#if 1
             int32 pi0, pi1, pi2;
             pi1 = PointIndex;
 
@@ -361,40 +443,55 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             const float Dist2 = Distances[pi2];
             const float Dist12 = Dist2-Dist1;
             const float Dist1P = CurrentDistance-Dist1;
-            float DistAlpha = Dist12 > SMALL_NUMBER ? Dist1P/Dist12 : 0.f;
+            const float DistAlpha = Dist12 > SMALL_NUMBER ? Dist1P/Dist12 : 0.f;
 
-            //UE_LOG(LogTemp,Warning, TEXT("%d %d %d %d %d %f"), pi0, pi1, pi2, Dist12 > KINDA_SMALL_NUMBER, Dist12 > SMALL_NUMBER, Dist1P);
+            const FVector2D& Offset(Positions[pi1]);
+            const FVector2D& Tangent0(Tangents[pi0]);
+            const FVector2D& Tangent1(Tangents[pi1]);
 
-            FVector2D Tangent0(Tangents[pi0]);
-            FVector2D Tangent1(Tangents[pi1]);
             FVector2D InterpTangent;
             InterpTangent = FMath::LerpStable(Tangent0, Tangent1, DistAlpha);
             InterpTangent.Normalize();
 
-            FVector2D Offset(Positions[pi1]);
-            FVector2D TransformedPoint(-InterpTangent.Y, InterpTangent.X);
-            TransformedPoint *= SrcPos.Y;
-            TransformedPoint += Offset+InterpTangent*Dist1P;
+            // Transform position
 
-            DstPositions[DstIndex] = FVector(TransformedPoint, SrcPos.Z);
-#else
-            float DistanceDelta = CurrentDistance - Distances[PointIndex];
-            FVector2D Tangent(Tangents[PointIndex]);
-            FVector2D Offset(Positions[PointIndex]);
-            FVector2D TransformedPoint(-Tangent.Y, Tangent.X);
-            TransformedPoint *= SrcPos.Y;
-            TransformedPoint += Offset+Tangent*DistanceDelta;
-            DstPositions[DstIndex] = FVector(TransformedPoint, SrcPos.Z);
-#endif
+            FVector2D TransformedPosition(-InterpTangent.Y, InterpTangent.X);
+            TransformedPosition *= SrcPos.Y;
+            TransformedPosition += Offset+InterpTangent*Dist1P;
+
+            DstPositions[DstIndex] = FVector(TransformedPosition, SrcPos.Z);
+
+            // Transform tangents
+
+            FVector TransformedTangent(SrcTanX);
+            FVector4 TransformedNormal(SrcTanZ);
+
+            {
+                float Angle = FMath::Acos(InterpTangent.X);
+
+                if (InterpTangent.Y < 0.f)
+                {
+                    Angle *= -1.f;
+                }
+
+                float S, C;
+                FMath::SinCos(&S, &C, Angle);
+
+                TransformedTangent.X = C*SrcTanX.X - S*SrcTanX.Y;
+                TransformedTangent.Y = S*SrcTanX.X + C*SrcTanX.Y;
+
+                TransformedNormal.X = C*SrcTanZ.X - S*SrcTanZ.Y;
+                TransformedNormal.Y = S*SrcTanZ.X + C*SrcTanZ.Y;
+            }
+
+            DstTangents[DstIndex*2  ] = FPackedNormal(TransformedTangent).Vector.Packed;
+            DstTangents[DstIndex*2+1] = FPackedNormal(TransformedNormal).Vector.Packed;
 
             // Expand bounding box
             GeneratedSection.SectionLocalBox += DstPositions[DstIndex];
 
             // Call decorator on position transform
-            if (bHasDecorator)
-            {
-                Decorator->OnTransformPosition(GeneratedSection, DstIndex);
-            }
+            Decorator->OnTransformPosition(GeneratedSection, DstIndex);
         }
     }
 }
@@ -432,12 +529,14 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
         check(SrcUVTans.GetNumVertices() == NumVertices);
 
         TArray<FVector>& DstPositions(PrefabBuffers->Positions);
-        TArray<uint32>& DstTangents(PrefabBuffers->Tangents);
+        TArray<FVector>& DstTangentX(PrefabBuffers->TangentX);
+        TArray<FVector4>& DstTangentZ(PrefabBuffers->TangentZ);
         TArray<FVector2D>& DstUVs(PrefabBuffers->UVs);
         TArray<FColor>& DstColors(PrefabBuffers->Colors);
 
         DstPositions.SetNumUninitialized(NumVertices);
-        DstTangents.SetNumUninitialized(NumVertices*2);
+        DstTangentX.SetNumUninitialized(NumVertices);
+        DstTangentZ.SetNumUninitialized(NumVertices);
 
         if (bHasUV)
         {
@@ -452,11 +551,8 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
         for (uint32 i=0; i<NumVertices; ++i)
         {
             DstPositions[i] = SrcPositions.VertexPosition(i);
-
-            FPackedNormal TangentX(SrcUVTans.VertexTangentX(i));
-            FPackedNormal TangentZ(SrcUVTans.VertexTangentZ(i));
-            DstTangents[i*2  ] = TangentX.Vector.Packed;
-            DstTangents[i*2+1] = TangentZ.Vector.Packed;
+            DstTangentX[i] = SrcUVTans.VertexTangentX(i);
+            DstTangentZ[i] = SrcUVTans.VertexTangentZ(i);
 
             if (bHasUV)
             {
@@ -469,7 +565,8 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
             }
         }
 
-        check(DstPositions.Num() == (DstTangents.Num()/2));
+        check(DstPositions.Num() == DstTangentX.Num());
+        check(DstPositions.Num() == DstTangentZ.Num());
 
         // Copy index buffer
 
@@ -494,10 +591,7 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, FPref
     uint32 VertexOffsetIndex = CopyPrefabToSection(OutSection, *PrefabBuffers);
 
     // Call decorator on copy prefab
-    if (HasDecorator())
-    {
-        Decorator->OnCopyPrefabToSection(OutSection, Prefab, VertexOffsetIndex);
-    }
+    Decorator->OnCopyPrefabToSection(OutSection, Prefab, VertexOffsetIndex);
 
     return VertexOffsetIndex;
 }
@@ -508,7 +602,6 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, const
 
     const TArray<FVector>& SrcPositions(PrefabBuffers.Positions);
     const TArray<FVector2D>& SrcUVs(PrefabBuffers.UVs);
-    const TArray<uint32>& SrcTangents(PrefabBuffers.Tangents);
     const TArray<FColor>& SrcColors(PrefabBuffers.Colors);
     const TArray<uint32>& SrcIndices(PrefabBuffers.Indices);
 
@@ -519,14 +612,16 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, const
     TArray<uint32>& DstIndices(OutSection.Indices);
 
     const uint32 OffsetIndex = DstPositions.Num();
-    const uint32 TargetNumVertices = OffsetIndex + SrcPositions.Num();
+    const uint32 NumAddVertices = SrcPositions.Num();
+    const uint32 TargetNumVertices = OffsetIndex + NumAddVertices;
 
     // Copy vertex buffers
 
     DstPositions.Append(SrcPositions);
-    DstTangents.Append(SrcTangents);
+    DstTangents.AddUninitialized(NumAddVertices*2);
 
     check(TargetNumVertices == DstPositions.Num());
+    check(TargetNumVertices == (DstTangents.Num()/2));
 
     // Copy UV buffer
     if (PrefabBuffers.HasUVs())
@@ -536,7 +631,7 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, const
     // Fill zeroed UV if prefab mesh have no valid UV buffer
     else
     {
-        DstUVs.SetNumZeroed(TargetNumVertices, false);
+        DstUVs.AddZeroed(NumAddVertices);
     }
 
     // Copy color buffer
@@ -547,12 +642,11 @@ uint32 UPMUPrefabBuilder::CopyPrefabToSection(FPMUMeshSection& OutSection, const
     // Fill zeroed color if prefab mesh have no valid color buffer
     else
     {
-        DstColors.SetNumZeroed(TargetNumVertices, false);
+        DstColors.AddZeroed(NumAddVertices);
     }
 
     // Ensure all vertex buffers size match
     check(TargetNumVertices == DstUVs.Num());
-    check(TargetNumVertices == (DstTangents.Num()/2));
     check(TargetNumVertices == DstColors.Num());
 
     // Copy index buffer with offset
