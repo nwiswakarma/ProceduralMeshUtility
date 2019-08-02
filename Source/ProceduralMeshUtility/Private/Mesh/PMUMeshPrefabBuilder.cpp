@@ -274,11 +274,10 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
 
         while (OccupiedDistance < EndDistance)
         {
-            //const uint32 PrefabIndex = Decorator->GetPrefabIndexAlongPolyline(LastOccupiedPointIndex, OccupiedDistance, EndDistance);
             uint32 PrefabIndex = 0;
             float RemainingDistance = OccupiedDistance-EndDistance;
 
-            // Find prefab to occupy along line, find start from the longest
+            // Find prefab to occupy along line, look from the longest
             for (int32 pi=(PrefabCount-1); pi>=0; --pi)
             {
                 const FPrefabData& Prefab(GetSortedPrefab(pi));
