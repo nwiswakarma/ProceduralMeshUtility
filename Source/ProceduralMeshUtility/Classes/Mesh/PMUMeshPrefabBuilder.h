@@ -97,7 +97,7 @@ class PROCEDURALMESHUTILITY_API UPMUPrefabBuilderDecorator : public UObject
 
 protected:
 
-    enum { DEFAULT_PREFAB_INDEX = 0 };
+    enum { DEFAULT_INDEX = 0 };
 
     UPROPERTY()
     TWeakObjectPtr<UPMUPrefabBuilder> PrefabBuilderPtr;
@@ -109,19 +109,29 @@ public:
 
     virtual void SetBuilder(UPMUPrefabBuilder* Builder);
 
-    FORCEINLINE_DEBUGGABLE virtual void OnPreDistributePrefabAlongPolyline()
+    FORCEINLINE_DEBUGGABLE virtual void OnAllocateSections()
     {
         // Blank Implementation
     }
 
-    FORCEINLINE_DEBUGGABLE virtual void OnPostDistributePrefabAlongPolyline()
+    FORCEINLINE_DEBUGGABLE virtual void OnPreDistributePrefab()
     {
         // Blank Implementation
     }
 
-    FORCEINLINE_DEBUGGABLE virtual uint32 GetPrefabIndexAlongPolyline()
+    FORCEINLINE_DEBUGGABLE virtual void OnPostDistributePrefab()
     {
-        return DEFAULT_PREFAB_INDEX;
+        // Blank Implementation
+    }
+
+    FORCEINLINE_DEBUGGABLE virtual int32 GetSectionIndexByOrigin(const FVector& PrefabOrigin)
+    {
+        return DEFAULT_INDEX;
+    }
+
+    FORCEINLINE_DEBUGGABLE virtual int32 GetPrefabIndex()
+    {
+        return DEFAULT_INDEX;
     }
 
     FORCEINLINE_DEBUGGABLE virtual void OnCopyPrefabToSection(FPMUMeshSection& Section, const FPMUPrefabGenerationData& Prefab, uint32 VertexOffsetIndex)
@@ -129,7 +139,17 @@ public:
         // Blank Implementation
     }
 
-    FORCEINLINE_DEBUGGABLE virtual void OnTransformPosition(FPMUMeshSection& Section, uint32 VertexIndex)
+    FORCEINLINE_DEBUGGABLE virtual void OnPrePrefabTransform(int32 SectionIndex, int32 PrefabIndex, const FPMUPrefabGenerationData& Prefab, uint32 VertexOffsetIndex)
+    {
+        // Blank Implementation
+    }
+
+    FORCEINLINE_DEBUGGABLE virtual void OnTransformPosition(int32 SectionIndex, int32 PrefabIndex, uint32 VertexIndex, const FVector2D& Offset, const FVector2D& Tangent)
+    {
+        // Blank Implementation
+    }
+
+    FORCEINLINE_DEBUGGABLE virtual void OnPostPrefabTransform(int32 SectionIndex, int32 PrefabIndex, const FPMUPrefabGenerationData& Prefab, uint32 VertexOffsetIndex)
     {
         // Blank Implementation
     }
@@ -150,7 +170,7 @@ public:
     TArray<uint32> SortedPrefabs;
     bool bPrefabInitialized;
 
-    FPMUMeshSection GeneratedSection;
+    TArray<FPMUMeshSection> GeneratedSections;
 
     UPROPERTY()
     UPMUPrefabBuilderDecorator* Decorator;
@@ -213,14 +233,24 @@ public:
         return PreparedPrefabs.Num();
     }
 
-    FORCEINLINE FPMUMeshSection& GetGeneratedSection()
+    FORCEINLINE bool HasSection(int32 SectionIndex) const
     {
-        return GeneratedSection;
+        return GeneratedSections.IsValidIndex(SectionIndex);
     }
 
-    FORCEINLINE const FPMUMeshSection& GetGeneratedSection() const
+    FORCEINLINE int32 GetSectionCount() const
     {
-        return GeneratedSection;
+        return GeneratedSections.Num();
+    }
+
+    FORCEINLINE FPMUMeshSection& GetSection(int32 SectionIndex)
+    {
+        return GeneratedSections[SectionIndex];
+    }
+
+    FORCEINLINE const FPMUMeshSection& GetSection(int32 SectionIndex) const
+    {
+        return GeneratedSections[SectionIndex];
     }
 
     void ResetDecorator();
@@ -259,8 +289,11 @@ public:
     UFUNCTION(BlueprintCallable, meta=(DisplayName="Build Prefabs Along Polyline"))
     void K2_BuildPrefabsAlongPoly(const TArray<FVector2D>& Points, bool bClosedPoly);
 
-    UFUNCTION(BlueprintCallable, meta=(DisplayName="Get Generated Section"))
-    FPMUMeshSectionRef K2_GetGeneratedSection();
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Get Section Count"))
+    int32 K2_GetSectionCount() const;
+
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Get Section"))
+    FPMUMeshSectionRef K2_GetSection(int32 SectionIndex);
 };
 
 FORCEINLINE_DEBUGGABLE bool UPMUPrefabBuilderDecorator::HasValidBuilder() const
@@ -288,9 +321,16 @@ FORCEINLINE_DEBUGGABLE void UPMUPrefabBuilder::K2_ResetPrefabs()
     ResetPrefabs();
 }
 
-FORCEINLINE_DEBUGGABLE FPMUMeshSectionRef UPMUPrefabBuilder::K2_GetGeneratedSection()
+FORCEINLINE_DEBUGGABLE int32 UPMUPrefabBuilder::K2_GetSectionCount() const
 {
-    return FPMUMeshSectionRef(GeneratedSection);
+    return GetSectionCount();
+}
+
+FORCEINLINE_DEBUGGABLE FPMUMeshSectionRef UPMUPrefabBuilder::K2_GetSection(int32 SectionIndex)
+{
+    return HasSection(SectionIndex)
+        ? FPMUMeshSectionRef(GetSection(SectionIndex))
+        : FPMUMeshSectionRef();
 }
 
 FORCEINLINE_DEBUGGABLE void UPMUPrefabBuilder::K2_BuildPrefabsAlongPoly(const TArray<FVector2D>& Points, bool bClosedPoly)

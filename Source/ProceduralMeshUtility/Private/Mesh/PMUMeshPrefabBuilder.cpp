@@ -243,10 +243,32 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
         return;
     }
 
-    FPrefabBufferMap PrefabBufferMap;
+    // Allocate sections
 
-    // Reset section data
-    GeneratedSection.Reset();
+    Decorator->OnAllocateSections();
+
+    struct FSectionAllocation
+    {
+        uint32 NumVertices;
+        uint32 NumIndices;
+    };
+
+    TArray<FSectionAllocation> SectionList;
+
+    // Make sure there is at least single section
+    if (GeneratedSections.Num() < 1)
+    {
+        GeneratedSections.SetNum(1);
+    }
+
+    // Reset sections and generate allocation data
+    for (FPMUMeshSection& Section : GeneratedSections)
+    {
+        FSectionAllocation AllocationData = { 0, 0 };
+        SectionList.Emplace(AllocationData);
+
+        Section.Reset();
+    }
 
     // Generate required generated prefab list
 
@@ -254,13 +276,11 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
     {
         const FPrefabData* Prefab;
         float Scale;
+        int32 SectionIndex;
     };
 
     TArray<FPrefabAllocation> PrefabList;
     PrefabList.Reserve(EndDistance/ShortestPrefabLength);
-
-    uint32 NumVertices = 0;
-    uint32 NumIndices = 0;
 
     // Generate prefab for each occupied distance
 
@@ -270,7 +290,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
 
         static const float PREFAB_MINIMUM_SCALE = .4f;
 
-        Decorator->OnPreDistributePrefabAlongPolyline();
+        Decorator->OnPreDistributePrefab();
 
         while (OccupiedDistance < EndDistance)
         {
@@ -292,14 +312,14 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
                     // Find prefab by angle threshold to the current line point origin
                     if (AngleThreshold > -1.f)
                     {
-                        const FVector2D& LinePointOrigin(Tangents[LastOccupiedPointIndex]);
+                        const FVector2D& LineTangentOrigin(Tangents[LastOccupiedPointIndex]);
                         const float DistanceThreshold = OccupiedDistance + PrefabLength + KINDA_SMALL_NUMBER;
 
                         // Iterate over next line point within prefab distance
                         for (int32 di=LastOccupiedPointIndex+1; (di<PointCount && DistanceThreshold>Distances[di]); ++di)
                         {
                             const FVector2D& NextPoint(Tangents[di]);
-                            const float Dot = LinePointOrigin | NextPoint;
+                            const float Dot = LineTangentOrigin | NextPoint;
 
                             // Filter points within origin line point angle threshold
                             if (Dot < AngleThreshold)
@@ -327,6 +347,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
 
             // Find last occupied index
 
+            const int32 PointIndex = LastOccupiedPointIndex; 
             const float DistanceThreshold = OccupiedDistance + KINDA_SMALL_NUMBER;
 
             for (int32 di=LastOccupiedPointIndex; (di<PointCount && DistanceThreshold>Distances[di]); ++di)
@@ -355,41 +376,58 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
                 }
             }
 
-            // Assign new prefab allocation data
+            // Assign new prefab and section allocation data
 
-            FPrefabAllocation PrefabAlloc;
-            PrefabAlloc.Prefab = &Prefab;
-            PrefabAlloc.Scale = Scale;
-            PrefabList.Emplace(PrefabAlloc);
+            const FVector PrefabOrigin(Positions[PointIndex], 0.f);
+            const int32 SectionIndex = Decorator->GetSectionIndexByOrigin(PrefabOrigin);
+
+            FPrefabAllocation PrefabAllocation;
+            PrefabAllocation.Prefab = &Prefab;
+            PrefabAllocation.Scale = Scale;
+            PrefabAllocation.SectionIndex = SectionIndex;
+            PrefabList.Emplace(PrefabAllocation);
 
             uint32 PrefabNumVertices;
             uint32 PrefabNumIndices;
 
             GetPrefabGeometryCount(PrefabNumVertices, PrefabNumIndices, Prefab);
 
-            NumVertices += PrefabNumVertices;
-            NumIndices += PrefabNumIndices;
+            FSectionAllocation& SectionAllocation(SectionList[SectionIndex]);
+            SectionAllocation.NumVertices += PrefabNumVertices;
+            SectionAllocation.NumIndices += PrefabNumIndices;
         }
 
-        Decorator->OnPostDistributePrefabAlongPolyline();
+        Decorator->OnPostDistributePrefab();
     }
 
-    AllocateSection(GeneratedSection, NumVertices, NumIndices);
+    // Allocate section geometry container
+    for (int32 i=0; i<SectionList.Num(); ++i)
+    {
+        const FSectionAllocation& SectionAllocation(SectionList[i]);
+        uint32 NumVertices = SectionAllocation.NumVertices;
+        uint32 NumIndices = SectionAllocation.NumIndices;
+        AllocateSection(GetSection(i), NumVertices, NumIndices);
+    }
 
     // Transform and copy prefab buffers to output sections
 
+    FPrefabBufferMap PrefabBufferMap;
     float CurrentDistance = Distances[0];
     int32 PointIndex = 0;
 
     for (int32 PrefabIndex=0; PrefabIndex<PrefabList.Num(); ++PrefabIndex)
     {
-        const FPrefabAllocation& PrefabAlloc(PrefabList[PrefabIndex]);
-        const FPrefabData& Prefab(*PrefabAlloc.Prefab);
-        float PrefabScaleX(PrefabAlloc.Scale);
+        const FPrefabAllocation& PrefabAllocation(PrefabList[PrefabIndex]);
+        const FPrefabData& Prefab(*PrefabAllocation.Prefab);
+        const int32 SectionIndex = PrefabAllocation.SectionIndex;
+        const float PrefabScaleX = PrefabAllocation.Scale;
 
         // Copy prefab to section
 
-        uint32 VertexOffsetIndex = CopyPrefabToSection(GeneratedSection, PrefabBufferMap, Prefab);
+        FPMUMeshSection& Section(GetSection(SectionIndex));
+        uint32 VertexOffsetIndex = CopyPrefabToSection(Section, PrefabBufferMap, Prefab);
+
+        Decorator->OnPrePrefabTransform(SectionIndex, PrefabIndex, Prefab, VertexOffsetIndex);
 
         // Transform positions along edges
 
@@ -399,8 +437,8 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
         const TArray<FVector4>& SrcTangentZ(PrefabBuffers.TangentZ);
         const TArray<uint32>& IndexAlongX(Prefab.SortedIndexAlongX);
 
-        TArray<FVector>& DstPositions(GeneratedSection.Positions);
-        TArray<uint32>& DstTangents(GeneratedSection.Tangents);
+        TArray<FVector>& DstPositions(Section.Positions);
+        TArray<uint32>& DstTangents(Section.Tangents);
 
         float StartDistance = CurrentDistance;
 
@@ -487,11 +525,13 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             DstTangents[DstIndex*2+1] = FPackedNormal(TransformedNormal).Vector.Packed;
 
             // Expand bounding box
-            GeneratedSection.SectionLocalBox += DstPositions[DstIndex];
+            Section.SectionLocalBox += DstPositions[DstIndex];
 
             // Call decorator on position transform
-            Decorator->OnTransformPosition(GeneratedSection, DstIndex);
+            Decorator->OnTransformPosition(SectionIndex, PrefabIndex, DstIndex, Offset, InterpTangent);
         }
+
+        Decorator->OnPostPrefabTransform(SectionIndex, PrefabIndex, Prefab, VertexOffsetIndex);
     }
 }
 
