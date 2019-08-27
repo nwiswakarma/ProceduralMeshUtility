@@ -284,6 +284,14 @@ void UPMUMeshComponent::AssignSectionGroup(int32 SectionIndex, int32 GroupIndex)
     SectionGroup.AddUnique(SectionIndex);
 }
 
+void UPMUMeshComponent::AllocateMeshSection(int32 SectionIndex)
+{
+	if (SectionIndex >= Sections.Num())
+	{
+		Sections.SetNum(SectionIndex+1, false);
+	}
+}
+
 void UPMUMeshComponent::CreateSection(int32 SectionIndex, const FPMUMeshSectionRef& Section)
 {
     // Invalid section resource, abort

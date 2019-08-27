@@ -107,6 +107,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
 	void UpdateRenderState();
 
+	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
+	void AllocateMeshSection(int32 SectionIndex);
+
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh", meta=(DisplayName="Create Section From Section Reference"))
 	void K2_CreateSectionFromRef(int32 SectionIndex, const FPMUMeshSectionRef& Section) { CreateSection(SectionIndex, Section); }
 	void CreateSection(int32 SectionIndex, const FPMUMeshSectionRef& Section);

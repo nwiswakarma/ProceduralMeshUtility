@@ -119,7 +119,7 @@ public:
         // Blank Implementation
     }
 
-    FORCEINLINE_DEBUGGABLE virtual void OnPostDistributePrefab()
+    FORCEINLINE_DEBUGGABLE virtual void OnPostDistributePrefab(uint32 SectionCount, uint32 PrefabCount)
     {
         // Blank Implementation
     }

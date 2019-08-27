@@ -261,7 +261,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
         GeneratedSections.SetNum(1);
     }
 
-    // Reset sections and generate allocation data
+    // Generate section allocation data and reset section geometry data
     for (FPMUMeshSection& Section : GeneratedSections)
     {
         FSectionAllocation AllocationData = { 0, 0 };
@@ -397,7 +397,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             SectionAllocation.NumIndices += PrefabNumIndices;
         }
 
-        Decorator->OnPostDistributePrefab();
+        Decorator->OnPostDistributePrefab(SectionList.Num(), PrefabList.Num());
     }
 
     // Allocate section geometry container
