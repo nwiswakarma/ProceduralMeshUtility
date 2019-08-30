@@ -37,6 +37,39 @@ class UGWTTickEvent;
 class UPMUMeshComponent;
 class FPMUBaseMeshProxySection;
 
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUMeshApplyHeightParameters
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float HeightScale = 1.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bUseUV = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float UVScaleX = 1.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float UVScaleY = 1.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bMaskByColor = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bInverseColorMask = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bAlongTangents = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bAssignTangents = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bSampleWrap = false;
+};
+
 UCLASS()
 class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibrary
 {
@@ -86,22 +119,22 @@ public:
         UTexture* HeightTexture = nullptr,
         float HeightScale = 1.f,
         bool bUseUV = false,
-        float PositionToUVScaleX = 1.f,
-        float PositionToUVScaleY = 1.f,
+        float UVScaleX = 1.f,
+        float UVScaleY = 1.f,
         bool bMaskByColor = true,
         bool bInverseColorMask = false,
         UGWTTickEvent* CallbackEvent = nullptr
         );
 
-    UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="bUseUV,PositionToUVScaleX,PositionToUVScaleY,bMaskByColor,bInverseColorMask,CallbackEvent"))
+    UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="bUseUV,UVScaleX,UVScaleY,bMaskByColor,bInverseColorMask,CallbackEvent"))
     static void AssignHeightMapToMeshSectionMulti(
         UPMUMeshComponent* MeshComponent,
         TArray<int32> SectionIndices,
         UTexture* HeightTexture = nullptr,
         float HeightScale = 1.f,
         bool bUseUV = false,
-        float PositionToUVScaleX = 1.f,
-        float PositionToUVScaleY = 1.f,
+        float UVScaleX = 1.f,
+        float UVScaleY = 1.f,
         bool bMaskByColor = true,
         bool bInverseColorMask = false,
         UGWTTickEvent* CallbackEvent = nullptr
@@ -114,24 +147,18 @@ public:
         const FTexture& HeightTexture,
         float HeightScale,
         bool bUseUV,
-        float PositionToUVScaleX,
-        float PositionToUVScaleY,
+        float UVScaleX,
+        float UVScaleY,
         bool bMaskByColor,
         bool bInverseColorMask
         );
 
-    UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="bUseUV,PositionToUVScaleX,PositionToUVScaleY,bMaskByColor,bInverseColorMask,CallbackEvent"))
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Apply Height Map To Mesh Section By Reference", AdvancedDisplay="CallbackEvent"))
     static void ApplyHeightMapToMeshSectionMulti(
         UObject* WorldContextObject,
         TArray<FPMUMeshSectionRef> SectionRefs,
-        UTexture* HeightTexture = nullptr,
-        float HeightScale = 1.f,
-        bool bUseUV = false,
-        float PositionToUVScaleX = 1.f,
-        float PositionToUVScaleY = 1.f,
-        bool bMaskByColor = true,
-        bool bInverseColorMask = false,
-        bool bAssignTangents = false,
+        UTexture* HeightTexture,
+        FPMUMeshApplyHeightParameters Parameters,
         UGWTTickEvent* CallbackEvent = nullptr
         );
 
@@ -140,12 +167,6 @@ public:
         ERHIFeatureLevel::Type FeatureLevel,
         const TArray<FPMUMeshSection*>& Sections,
         const FTexture& HeightTexture,
-        float HeightScale,
-        bool bUseUV,
-        float PositionToUVScaleX,
-        float PositionToUVScaleY,
-        bool bMaskByColor,
-        bool bInverseColorMask,
-        bool bAssignTangents
+        const FPMUMeshApplyHeightParameters& Parameters
         );
 };

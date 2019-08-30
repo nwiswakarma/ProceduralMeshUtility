@@ -324,7 +324,7 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
     const float SegmentLength = LineLength / SegmentCount;
     const float VertOffsetZ = Offset / QuadPerSegment;
     const float InvDist = 1.f/Distances.Last();
-    const float InvUVY = 1.f/(VertexCountZ);
+    const float InvUVY = 1.f/(VertexCountZ-1);
 
     const int32 IndexCount = SegmentCount*QuadPerSegment*6;
 

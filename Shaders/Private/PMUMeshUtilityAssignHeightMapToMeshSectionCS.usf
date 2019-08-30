@@ -38,21 +38,23 @@ RWByteAddressBuffer OutTangentData;
 
 Buffer<float4> ColorData;
 Buffer<float2> UVData;
+Buffer<float4> TangentData;
 
 Texture2D HeightTexture;
 SamplerState HeightTextureSampler;
 
 uint _VertexCount;
 float _HeightScale;
+
+float2 _UVScale;
+float _AlongTangents;
+
+float _MaskByColor;
 float _InverseMask;
-float2 _PositionToUVScale;
+float4 _ColorMask;
 
 #ifndef PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER
 #define PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER 0
-#endif
-
-#ifndef PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_COLOR_BUFFER_MASK
-#define PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_COLOR_BUFFER_MASK 0
 #endif
 
 #ifndef PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS
@@ -60,6 +62,36 @@ float2 _PositionToUVScale;
 #endif
 
 #define TAN_STRIDE 8
+
+uint4 U32ToU8x4(uint v)
+{
+    uint4 unpacked;
+    unpacked.x = ((v >>  0) & 0xFF);
+    unpacked.y = ((v >>  8) & 0xFF);
+    unpacked.z = ((v >> 16) & 0xFF);
+    unpacked.w = ((v >> 24) & 0xFF);
+    return unpacked;
+}
+
+int4 U32ToI8x4(uint v)
+{
+    int4 unpacked;
+    unpacked.x = ((v >>  0) & 0xFF);
+    unpacked.y = ((v >>  8) & 0xFF);
+    unpacked.z = ((v >> 16) & 0xFF);
+    unpacked.w = ((v >> 24) & 0xFF);
+    return unpacked;
+}
+
+float4 U8x4ToSNF32x4(uint4 v)
+{
+    return (v/255.0f)*2.0f-1.0f;
+}
+
+float4 I8x4ToSNF32x4(int4 v)
+{
+    return v/127.0f;
+}
 
 uint PackNormalizedFloat4(float4 v)
 {
@@ -82,45 +114,42 @@ void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
 
     const uint PosAttrId = 3 * VertexId;
 
-    float mask;
-    float2 uv;
+    uint ColorId = VertexId * (_MaskByColor>.5f);
+    float ColorMask;
+    ColorMask = dot(ColorData[ColorId], _ColorMask);
+    ColorMask = (_InverseMask>.5f) ? (1.f-ColorMask) : ColorMask;
 
-#if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_COLOR_BUFFER_MASK
-    mask = ColorData[VertexId].a;
-    mask = (_InverseMask>.5f) ? (1.f-mask) : mask;
-#else
-    mask = 1.f;
-#endif
+    float2 UV;
 
 #if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER
-    uv = UVData[VertexId].xy;
+    UV = UVData[VertexId].xy * _UVScale;
 #else
-    uv.x = OutPositionData[PosAttrId  ];
-    uv.y = OutPositionData[PosAttrId+1];
-    uv *= _PositionToUVScale;
+    UV.x = OutPositionData[PosAttrId  ];
+    UV.y = OutPositionData[PosAttrId+1];
+    UV *= _UVScale;
 #endif
 
     float hv;
-    hv = Texture2DSample(HeightTexture, HeightTextureSampler, uv).x;
+    hv = Texture2DSample(HeightTexture, HeightTextureSampler, UV).x;
 
 #if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS
     const uint TanAttrId = 2 * VertexId;
-    const float2 uvo = _PositionToUVScale;
+    const float2 uvo = _UVScale;
 
 // 4 Samples
 #if 1
-    float hpx = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(uvo.x, 0.f)).x;
-    float hpy = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(0.f, uvo.y)).x;
-    float hnx = Texture2DSample(HeightTexture, HeightTextureSampler, uv-float2(uvo.x, 0.f)).x;
-    float hny = Texture2DSample(HeightTexture, HeightTextureSampler, uv-float2(0.f, uvo.y)).x;
+    float hpx = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(uvo.x, 0.f)).x;
+    float hpy = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(0.f, uvo.y)).x;
+    float hnx = Texture2DSample(HeightTexture, HeightTextureSampler, UV-float2(uvo.x, 0.f)).x;
+    float hny = Texture2DSample(HeightTexture, HeightTextureSampler, UV-float2(0.f, uvo.y)).x;
 
     float3 nx = float3(1,0, (hpx-hnx)*_HeightScale);
     float3 ny = float3(0,1, (hpy-hny)*_HeightScale);
     float3 normal = normalize(cross(nx, ny));
 // 3 Samples
 #else
-    float hx = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(uvo.x, 0.f)).x;
-    float hy = Texture2DSample(HeightTexture, HeightTextureSampler, uv+float2(0.f, uvo.y)).x;
+    float hx = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(uvo.x, 0.f)).x;
+    float hy = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(0.f, uvo.y)).x;
 
     float3 nx = float3(1,0, (hx-hv)*_HeightScale);
     float3 ny = float3(0,1, (hy-hv)*_HeightScale);
@@ -133,5 +162,11 @@ void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
     OutTangentData.Store2(VertexId*TAN_STRIDE, uint2(ut,un));
 #endif
 
-    OutPositionData[PosAttrId+2] += hv * _HeightScale * mask;
+    uint TangentZId = 2 * VertexId * (_AlongTangents>.5f) + 1;
+    float3 HeightDirection = TangentData[TangentZId].xyz;
+    float3 HeightOffset = hv * _HeightScale * ColorMask * HeightDirection;
+
+    OutPositionData[PosAttrId  ] += HeightOffset.x;
+    OutPositionData[PosAttrId+1] += HeightOffset.y;
+    OutPositionData[PosAttrId+2] += HeightOffset.z;
 }
