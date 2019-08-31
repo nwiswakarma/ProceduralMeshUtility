@@ -104,13 +104,13 @@ IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityCreateGridMeshSectionCS<0>, TEX
 IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityCreateGridMeshSectionCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUGridUtilityCreateGPUMeshSectionCS.usf"), TEXT("MainCS"), SF_Compute);
 
 template<uint32 CompileFlags>
-class TPMUMeshUtilityAssignHeightMapToMeshSectionCS : public FRULBaseComputeShader<256,1,1>
+class TPMUMeshUtilityApplyHeightMapToMeshSectionCS : public FRULBaseComputeShader<256,1,1>
 {
 public:
 
     typedef FRULBaseComputeShader<256,1,1> FBaseType;
 
-    DECLARE_SHADER_TYPE(TPMUMeshUtilityAssignHeightMapToMeshSectionCS, Global);
+    DECLARE_SHADER_TYPE(TPMUMeshUtilityApplyHeightMapToMeshSectionCS, Global);
 
 public:
 
@@ -122,13 +122,11 @@ public:
     static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
     {
         FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-        const uint32 UseUVBuffer    = ((CompileFlags&0x01) > 0) ? 1 : 0;
-        const uint32 AssignTangents = ((CompileFlags&0x02) > 0) ? 1 : 0;
+        const uint32 UseUVBuffer = ((CompileFlags&0x01) > 0) ? 1 : 0;
         OutEnvironment.SetDefine(TEXT("PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER"), UseUVBuffer);
-        OutEnvironment.SetDefine(TEXT("PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS"), AssignTangents);
     }
 
-    RUL_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMeshUtilityAssignHeightMapToMeshSectionCS)
+    RUL_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMeshUtilityApplyHeightMapToMeshSectionCS)
 
     RUL_DECLARE_SHADER_PARAMETERS_1(
         Texture,
@@ -153,12 +151,83 @@ public:
         "TangentData", TangentData
         )
 
-    RUL_DECLARE_SHADER_PARAMETERS_2(
+    RUL_DECLARE_SHADER_PARAMETERS_1(
         UAV,
         FShaderResourceParameter,
         FResourceId,
-        "OutPositionData", OutPositionData,
-        "OutTangentData", OutTangentData
+        "OutPositionData", OutPositionData
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_5(
+        Value,
+        FShaderParameter,
+        FParameterId,
+        "_VertexCount", Params_VertexCount,
+        "_HeightScale", Params_HeightScale,
+        "_Flags", Params_Flags,
+        "_UVScale", Params_UVScale,
+        "_ColorMask", Params_ColorMask
+        )
+};
+
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityApplyHeightMapToMeshSectionCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityApplyHeightMapToMeshSectionCS.usf"), TEXT("ApplyHeightMap"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityApplyHeightMapToMeshSectionCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityApplyHeightMapToMeshSectionCS.usf"), TEXT("ApplyHeightMap"), SF_Compute);
+
+template<uint32 CompileFlags>
+class TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS : public FRULBaseComputeShader<256,1,1>
+{
+public:
+
+    typedef FRULBaseComputeShader<256,1,1> FBaseType;
+
+    DECLARE_SHADER_TYPE(TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS, Global);
+
+public:
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return RHISupportsComputeShaders(Parameters.Platform);
+    }
+
+    static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+    {
+        FBaseType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+        const uint32 UseUVBuffer = ((CompileFlags&0x01) > 0) ? 1 : 0;
+        OutEnvironment.SetDefine(TEXT("PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER"), UseUVBuffer);
+    }
+
+    RUL_DECLARE_SHADER_CONSTRUCTOR_SERIALIZER_WITH_TEXTURE(TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS)
+
+    RUL_DECLARE_SHADER_PARAMETERS_3(
+        Texture,
+        FShaderResourceParameter,
+        FResourceId,
+        "HeightTextureA", HeightTextureA,
+        "HeightTextureB", HeightTextureB,
+        "NoiseTexture", NoiseTexture
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_1(
+        Sampler,
+        FShaderResourceParameter,
+        FResourceId,
+        "HeightTextureSampler", HeightTextureSampler
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_3(
+        SRV,
+        FShaderResourceParameter,
+        FResourceId,
+        "ColorData", ColorData,
+        "UVData", UVData,
+        "TangentData", TangentData
+        )
+
+    RUL_DECLARE_SHADER_PARAMETERS_1(
+        UAV,
+        FShaderResourceParameter,
+        FResourceId,
+        "OutPositionData", OutPositionData
         )
 
     RUL_DECLARE_SHADER_PARAMETERS_7(
@@ -167,28 +236,16 @@ public:
         FParameterId,
         "_VertexCount", Params_VertexCount,
         "_HeightScale", Params_HeightScale,
+        "_Flags", Params_Flags,
         "_UVScale", Params_UVScale,
-        "_AlongTangents", Params_AlongTangents,
-        "_MaskByColor", Params_MaskByColor,
-        "_InverseMask", Params_InverseMask,
-        "_ColorMask", Params_ColorMask
+        "_ColorMask", Params_ColorMask,
+        "_NoiseUVScale", Params_NoiseUVScale,
+        "_HashConstants", Params_HashConstants
         )
 };
 
-#define IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(SHADER_TYPE)\
-IMPLEMENT_SHADER_TYPE(template<>, SHADER_TYPE, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityAssignHeightMapToMeshSectionCS.usf"), TEXT("AssignHeightMap_PositionOnlyCS"), SF_Compute);
-
-IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<0>)
-IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<1>)
-IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<2>)
-IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<3>)
-
-//IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<4>)
-//IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<5>)
-//IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<6>)
-//IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS(TPMUMeshUtilityAssignHeightMapToMeshSectionCS<7>)
-
-#undef IMPLEMENT_PMUMeshUtilityAssignHeightMapToMeshSectionCS
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS.usf"), TEXT("ApplyHeightMap"), SF_Compute);
+IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS.usf"), TEXT("ApplyHeightMap"), SF_Compute);
 
 void UPMUMeshUtility::ExpandSectionBoundsMulti(
     UPMUMeshComponent* MeshComponent,
@@ -199,7 +256,7 @@ void UPMUMeshUtility::ExpandSectionBoundsMulti(
 {
     if (! IsValid(MeshComponent))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID MESH COMPONENT"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ExpandSectionBoundsMulti() ABORTED, INVALID MESH COMPONENT"));
         return;
     }
 
@@ -454,370 +511,111 @@ void UPMUMeshUtility::CreateGridMeshSectionGPU_RT(
     PositionData.Unlock();
 }
 
-void UPMUMeshUtility::AssignHeightMapToMeshSection(
-    UPMUMeshComponent* MeshComponent,
-    int32 SectionIndex,
-    UTexture* HeightTexture,
-    float HeightScale,
-    bool bUseUV,
-    float UVScaleX,
-    float UVScaleY,
-    bool bMaskByColor,
-    bool bInverseColorMask,
-    UGWTTickEvent* CallbackEvent
-    )
+void UPMUMeshUtility::FApplyHeightMapInputData::Init(const TArray<FPMUMeshSection*>& Sections, const FPMUMeshApplyHeightParameters& Parameters)
 {
-	UWorld* World = GEngine->GetWorldFromContextObject(MeshComponent, EGetWorldErrorMode::LogAndReturnNull);
+    // Reset geometry counts
 
-    if (! IsValid(World))
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID WORLD CONTEXT OBJECT"));
-        return;
-    }
-    else
-    if (! World->Scene)
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID WORLD SCENE"));
-        return;
-    }
-    else
-    if (! IsValid(MeshComponent))
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID MESH COMPONENT"));
-        return;
-    }
-    else
-    if (! MeshComponent->IsValidNonEmptySection(SectionIndex))
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID MESH SECTION"));
-        return;
-    }
-    else
-    if (! IsValid(HeightTexture))
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, INVALID HEIGHT TEXTURE"));
-        return;
-    }
+    VertexCount = 0;
+    UVCount = 0;
+    TangentCount = 0;
+    ColorCount = 0;
 
-    struct FRenderParameter
-    {
-        ERHIFeatureLevel::Type FeatureLevel;
-        // Height Map
-        const FTexture* HeightTexture;
-        float HeightScale;
-        // Mesh Construction
-        FPMUMeshSceneProxy* SceneProxy;
-        int32 SectionIndex;
-        // Buffer Setup
-        bool bUseUV;
-        float UVScaleX;
-        float UVScaleY;
-        bool bMaskByColor;
-        bool bInverseColorMask;
-        // Callback Event
-        UGWTTickEvent* CallbackEvent;
-    };
+    // Gather parameters
 
-    FRenderParameter RenderParameter = {
-        World->Scene->GetFeatureLevel(),
-        // Height Map
-        HeightTexture->Resource,
-        HeightScale,
-        // Mesh Construction
-        MeshComponent->GetSceneProxy(),
-        SectionIndex,
-        // Buffer Setup
-        bUseUV,
-        UVScaleX,
-        UVScaleY,
-        bMaskByColor,
-        bInverseColorMask,
-        // Callback Event
-        CallbackEvent
-        };
+    bool bUseUV = Parameters.bUseUV;
+    bool bMaskByColor = Parameters.bMaskByColor;
+    bool bAlongTangents = Parameters.bAlongTangents;
 
-    ENQUEUE_RENDER_COMMAND(PMUMeshUtility_AssignHeightMapToMeshSection)(
-        [RenderParameter](FRHICommandListImmediate& RHICmdList)
-        {
-            FPMUMeshSceneProxy* SceneProxy(RenderParameter.SceneProxy);
-            int32 SectionIndex = RenderParameter.SectionIndex;
+    bool bInverseColorMask = Parameters.bInverseColorMask;
+    bool bSampleWrap = Parameters.bSampleWrap;
 
-            if (! SceneProxy)
-            {
-                UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, [RT] INVALID SCENE PROXY"));
-                return;
-            }
-
-            FPMUBaseMeshProxySection* Section = SceneProxy->GetSection(SectionIndex);
-
-            if (! Section)
-            {
-                UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSection() ABORTED, [RT] INVALID SECTION"));
-                return;
-            }
-
-            if (! RenderParameter.HeightTexture)
-            {
-                return;
-            }
-
-            TArray<FPMUBaseMeshProxySection*> Sections;
-            Sections.Emplace(Section);
-
-            AssignHeightMapToMeshSection_RT(
-                RHICmdList,
-                RenderParameter.FeatureLevel,
-                Sections,
-                *RenderParameter.HeightTexture,
-                RenderParameter.HeightScale,
-                RenderParameter.bUseUV,
-                RenderParameter.UVScaleX,
-                RenderParameter.UVScaleY,
-                RenderParameter.bMaskByColor,
-                RenderParameter.bInverseColorMask
-                );
-
-            FGWTTickEventRef(RenderParameter.CallbackEvent).EnqueueCallback();
-        }
-    );
-}
-
-void UPMUMeshUtility::AssignHeightMapToMeshSectionMulti(
-    UPMUMeshComponent* MeshComponent,
-    TArray<int32> SectionIndices,
-    UTexture* HeightTexture,
-    float HeightScale,
-    bool bUseUV,
-    float UVScaleX,
-    float UVScaleY,
-    bool bMaskByColor,
-    bool bInverseColorMask,
-    UGWTTickEvent* CallbackEvent
-    )
-{
-	UWorld* World = GEngine->GetWorldFromContextObject(MeshComponent, EGetWorldErrorMode::LogAndReturnNull);
-
-    if (! IsValid(World))
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID WORLD CONTEXT OBJECT"));
-        return;
-    }
-    else
-    if (! World->Scene)
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID WORLD SCENE"));
-        return;
-    }
-    else
-    if (! IsValid(MeshComponent))
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID MESH COMPONENT"));
-        return;
-    }
-    else
-    if (! IsValid(HeightTexture))
-    {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, INVALID HEIGHT TEXTURE"));
-        return;
-    }
-
-    TArray<int32> FilteredSectionIndices;
-
-    for (int32 i : SectionIndices)
-    {
-        if (MeshComponent->IsValidNonEmptySection(i))
-        {
-            FilteredSectionIndices.Emplace(i);
-        }
-    }
-
-    if (FilteredSectionIndices.Num() < 1)
-    {
-        return;
-    }
-
-    struct FRenderParameter
-    {
-        ERHIFeatureLevel::Type FeatureLevel;
-        // Height Map
-        const FTexture* HeightTexture;
-        float HeightScale;
-        // Mesh Construction
-        FPMUMeshSceneProxy* SceneProxy;
-        TArray<int32> SectionIndices;
-        // Buffer Setup
-        bool bUseUV;
-        float UVScaleX;
-        float UVScaleY;
-        bool bMaskByColor;
-        bool bInverseColorMask;
-        // Callback Event
-        UGWTTickEvent* CallbackEvent;
-    };
-
-    FRenderParameter RenderParameter = {
-        World->Scene->GetFeatureLevel(),
-        // Height Map
-        HeightTexture->Resource,
-        HeightScale,
-        // Mesh Construction
-        MeshComponent->GetSceneProxy(),
-        FilteredSectionIndices,
-        // Buffer Setup
-        bUseUV,
-        UVScaleX,
-        UVScaleY,
-        bMaskByColor,
-        bInverseColorMask,
-        // Callback Event
-        CallbackEvent
-        };
-
-    ENQUEUE_RENDER_COMMAND(PMUMeshUtility_AssignHeightMapToMeshSectionMulti)(
-        [RenderParameter](FRHICommandListImmediate& RHICmdList)
-        {
-            FPMUMeshSceneProxy* SceneProxy(RenderParameter.SceneProxy);
-            TArray<FPMUBaseMeshProxySection*> Sections;
-
-            if (! SceneProxy)
-            {
-                UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::AssignHeightMapToMeshSectionMulti() ABORTED, [RT] INVALID SCENE PROXY"));
-                return;
-            }
-            else
-            if (! RenderParameter.HeightTexture)
-            {
-                return;
-            }
-
-            for (int32 i : RenderParameter.SectionIndices)
-            {
-                FPMUBaseMeshProxySection* Section = SceneProxy->GetSection(i);
-
-                if (Section)
-                {
-                    Sections.Emplace(Section);
-                }
-            }
-
-            if (Sections.Num() > 0)
-            {
-                AssignHeightMapToMeshSection_RT(
-                    RHICmdList,
-                    RenderParameter.FeatureLevel,
-                    Sections,
-                    *RenderParameter.HeightTexture,
-                    RenderParameter.HeightScale,
-                    RenderParameter.bUseUV,
-                    RenderParameter.UVScaleX,
-                    RenderParameter.UVScaleY,
-                    RenderParameter.bMaskByColor,
-                    RenderParameter.bInverseColorMask
-                    );
-            }
-
-            FGWTTickEventRef(RenderParameter.CallbackEvent).EnqueueCallback();
-        }
-    );
-}
-
-void UPMUMeshUtility::AssignHeightMapToMeshSection_RT(
-    FRHICommandListImmediate& RHICmdList,
-    ERHIFeatureLevel::Type FeatureLevel,
-    const TArray<FPMUBaseMeshProxySection*>& Sections,
-    const FTexture& HeightTexture,
-    float HeightScale,
-    bool bUseUV,
-    float UVScaleX,
-    float UVScaleY,
-    bool bMaskByColor,
-    bool bInverseColorMask
-    )
-{
-    FTextureRHIParamRef HeightTextureParam = HeightTexture.TextureRHI;
-
-    if (! HeightTextureParam || Sections.Num() < 1)
-    {
-        return;
-    }
+    // Calculate vertex offsets and total vertex count
 
     const int32 SectionCount = Sections.Num();
 
+    VertexOffsets.Reset();
+    VertexOffsets.SetNumUninitialized(SectionCount);
+
     for (int32 i=0; i<SectionCount; ++i)
     {
-        FPMUBaseMeshProxySection& Section(*Sections[i]);
-        FPMUPositionVertexBuffer& PositionBuffer(*Section.GetPositionVertexBuffer());
-        FPMUColorVertexBuffer& ColorBuffer(*Section.GetColorVertexBuffer());
-        auto& UVBuffer(Section.GetStaticMeshVertexBuffer()->TexCoordVertexBuffer);
+        VertexOffsets[i] = VertexCount;
+        VertexCount += Sections[i]->Positions.Num();
+        UVCount += Sections[i]->UVs.Num();
+        TangentCount += Sections[i]->Tangents.Num();
+        ColorCount += Sections[i]->Colors.Num();
+    }
 
-        check(PositionBuffer.IsInitialized());
+    // Generate position input data
 
-        const FUnorderedAccessViewRHIParamRef PositionUAV = PositionBuffer.GetUAV();
-        FShaderResourceViewRHIRef UVSRV;
+    PositionData.Reset(VertexCount);
 
-        if (! PositionUAV)
+    for (int32 i=0; i<SectionCount; ++i)
+    {
+        PositionData.Append(Sections[i]->Positions);
+    }
+
+    // Generate UV input data
+
+    bUseUVInput = bUseUV && (UVCount == VertexCount);
+
+    if (bUseUV && bUseUVInput)
+    {
+        UVData.Reset(UVCount);
+
+        for (int32 i=0; i<SectionCount; ++i)
         {
-            return;
+            UVData.Append(Sections[i]->UVs);
         }
+    }
+    else
+    {
+        UVData.Empty();
+    }
 
-        const uint32 NumVertices = PositionBuffer.GetNumVertices();
+    // Generate tangent input data
 
-        RHICmdList.BeginComputePass(TEXT("AssignHeightMapToMeshSection"));
+    bUseTangentInput = bAlongTangents && (TangentCount == (2*VertexCount));
+
+    if (bUseTangentInput)
+    {
+        TangentData.Reset(TangentCount);
+
+        for (int32 i=0; i<SectionCount; ++i)
         {
-            FSamplerStateRHIParamRef TextureSampler = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
-
-            FVector2D UVScale = FVector2D::UnitVector;
-            UVScale.X = UVScaleX;
-            UVScale.Y = UVScaleY;
-
-            TPMUMeshUtilityAssignHeightMapToMeshSectionCS<0>::FBaseType* ComputeShader;
-
-            if (bUseUV && bMaskByColor)
-            {
-                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<3>>(GetGlobalShaderMap(FeatureLevel));
-            }
-            else
-            if (bUseUV)
-            {
-                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel));
-            }
-            else
-            if (bMaskByColor)
-            {
-                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<2>>(GetGlobalShaderMap(FeatureLevel));
-            }
-            else
-            {
-                ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel));
-            }
-
-            ComputeShader->SetShader(RHICmdList);
-            ComputeShader->BindTexture(RHICmdList, TEXT("HeightTexture"), TEXT("HeightTextureSampler"), HeightTextureParam, TextureSampler);
-            ComputeShader->BindUAV(RHICmdList, TEXT("OutPositionData"), PositionUAV);
-            ComputeShader->SetParameter(RHICmdList, TEXT("_VertexCount"), NumVertices);
-            ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"), HeightScale);
-            ComputeShader->SetParameter(RHICmdList, TEXT("_UVScale"), UVScale);
-
-            if (bUseUV)
-            {
-                UVSRV = RHICreateShaderResourceView(UVBuffer.VertexBufferRHI, 8, PF_G32R32F);
-                ComputeShader->BindSRV(RHICmdList, TEXT("UVData"), UVSRV);
-            }
-
-            if (bMaskByColor)
-            {
-                const FShaderResourceViewRHIParamRef ColorSRV = ColorBuffer.GetColorComponentsSRV();
-                ComputeShader->BindSRV(RHICmdList, TEXT("ColorData"), ColorSRV);
-                ComputeShader->SetParameter(RHICmdList, TEXT("_InverseMask"), bInverseColorMask ? 1.f : 0.f);
-            }
-
-            ComputeShader->DispatchAndClear(RHICmdList, NumVertices, 1, 1);
+            TangentData.Append(Sections[i]->Tangents);
         }
-        RHICmdList.EndComputePass();
+    }
+    else
+    {
+        FVector4 TangentX(FVector::ForwardVector, 0);
+        FVector4 TangentZ(FVector::UpVector, 1);
+
+        TangentData.Reset(2);
+        TangentData.Emplace(FPackedNormal(TangentX).Vector.Packed);
+        TangentData.Emplace(FPackedNormal(TangentZ).Vector.Packed);
+    }
+
+    // Generate Color input data
+
+    bUseColorInput = bMaskByColor && (ColorCount == VertexCount);
+
+    if (bMaskByColor && bUseColorInput)
+    {
+        ColorData.Reset(ColorCount);
+
+        for (int32 i=0; i<SectionCount; ++i)
+        {
+            ColorData.Append(Sections[i]->Colors);
+        }
+    }
+    else
+    {
+        ColorData.Reset(1);
+        ColorData.Emplace(FColor::White);
     }
 }
 
-void UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti(
+void UPMUMeshUtility::ApplyHeightMapToMeshSections(
     UObject* WorldContextObject,
     TArray<FPMUMeshSectionRef> SectionRefs,
     UTexture* HeightTexture,
@@ -829,25 +627,25 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti(
 
     if (! IsValid(World))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSections() ABORTED, INVALID WORLD CONTEXT OBJECT"));
         return;
     }
     else
     if (! World->Scene)
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti() ABORTED, INVALID WORLD SCENE"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSections() ABORTED, INVALID WORLD SCENE"));
         return;
     }
     else
     if (! IsValid(WorldContextObject))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti() ABORTED, INVALID MESH COMPONENT"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSections() ABORTED, INVALID MESH COMPONENT"));
         return;
     }
     else
     if (! IsValid(HeightTexture))
     {
-        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti() ABORTED, INVALID HEIGHT TEXTURE"));
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplyHeightMapToMeshSections() ABORTED, INVALID HEIGHT TEXTURE"));
         return;
     }
 
@@ -910,7 +708,7 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti(
 
             if (Sections.Num() > 0)
             {
-                ApplyHeightMapToMeshSection_RT(
+                ApplyHeightMapToMeshSections_RT(
                     RHICmdList,
                     RenderParameter.FeatureLevel,
                     Sections,
@@ -924,7 +722,7 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSectionMulti(
     );
 }
 
-void UPMUMeshUtility::ApplyHeightMapToMeshSection_RT(
+void UPMUMeshUtility::ApplyHeightMapToMeshSections_RT(
     FRHICommandListImmediate& RHICmdList,
     ERHIFeatureLevel::Type FeatureLevel,
     const TArray<FPMUMeshSection*>& Sections,
@@ -932,126 +730,38 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSection_RT(
     const FPMUMeshApplyHeightParameters& Parameters
     )
 {
-    FTextureRHIRef HeightTextureParam = HeightTexture.TextureRHI;
+    const int32 SectionCount = Sections.Num();
+    FTextureRHIRef HeightTextureRef = HeightTexture.TextureRHI;
 
-    if (! HeightTextureParam || Sections.Num() < 1)
+    check(Sections.Num() > 0);
+
+    if (! HeightTextureRef)
     {
         return;
     }
+
+    FApplyHeightMapInputData InputData;
+    InputData.Init(Sections, Parameters);
 
     // Get shader parameters
 
     float HeightScale = Parameters.HeightScale;
 
-    bool bUseUV = Parameters.bUseUV;
-    float UVScaleX = Parameters.UVScaleX;
-    float UVScaleY = Parameters.UVScaleY;
+    FVector2D UVScale;
+    UVScale.X = Parameters.UVScaleX;
+    UVScale.Y = Parameters.UVScaleY;
 
-    bool bMaskByColor = Parameters.bMaskByColor;
     bool bInverseColorMask = Parameters.bInverseColorMask;
-
-    bool bAlongTangents = Parameters.bAlongTangents;
-    //bool bAssignTangents = Parameters.bAssignTangents;
-
     bool bSampleWrap = Parameters.bSampleWrap;
 
-    // Generate vertex offsets and total vertex count
+    // Create vertex buffers
 
-    const int32 SectionCount = Sections.Num();
-    int32 VertexCount = 0;
-    int32 TangentCount = 0;
-    int32 UVCount = 0;
-    int32 ColorCount = 0;
-
-    TArray<int32> SectionVertexOffsets;
-    SectionVertexOffsets.SetNumUninitialized(SectionCount);
-
-    for (int32 i=0; i<SectionCount; ++i)
-    {
-        SectionVertexOffsets[i] = VertexCount;
-        VertexCount += Sections[i]->Positions.Num();
-        TangentCount += Sections[i]->Tangents.Num();
-        UVCount += Sections[i]->UVs.Num();
-        ColorCount += Sections[i]->Colors.Num();
-    }
-
-    // Generate position input data
-
-    TResourceArray<FVector, VERTEXBUFFER_ALIGNMENT> PositionInputData;
-    PositionInputData.Reserve(VertexCount);
-
-    for (int32 i=0; i<SectionCount; ++i)
-    {
-        PositionInputData.Append(Sections[i]->Positions);
-    }
-
-    // Generate tangent input data
-
-    TResourceArray<uint32, VERTEXBUFFER_ALIGNMENT> TangentInputData;
-    bool bUseTangentInput = bAlongTangents && (TangentCount == (2*VertexCount));
-
-    if (bUseTangentInput)
-    {
-        TangentInputData.Reserve(TangentCount);
-
-        for (int32 i=0; i<SectionCount; ++i)
-        {
-            TangentInputData.Append(Sections[i]->Tangents);
-        }
-    }
-    else
-    {
-        FVector4 TangentX(FVector::ForwardVector, 0);
-        FVector4 TangentZ(FVector::UpVector, 1);
-
-        TangentInputData.Empty(2);
-        TangentInputData.Emplace(FPackedNormal(TangentX).Vector.Packed);
-        TangentInputData.Emplace(FPackedNormal(TangentZ).Vector.Packed);
-    }
-
-    // Generate UV input data
-
-    TResourceArray<FVector2D, VERTEXBUFFER_ALIGNMENT> UVInputData;
-    bool bUseUVInput = bUseUV && (UVCount == VertexCount);
-
-    if (bUseUV && bUseUVInput)
-    {
-        UVInputData.Reserve(UVCount);
-
-        for (int32 i=0; i<SectionCount; ++i)
-        {
-            UVInputData.Append(Sections[i]->UVs);
-        }
-    }
-
-    // Generate Color input data
-
-    TResourceArray<FColor, VERTEXBUFFER_ALIGNMENT> ColorInputData;
-    bool bUseColorInput = bMaskByColor && (ColorCount == VertexCount);
-
-    if (bMaskByColor && bUseColorInput)
-    {
-        ColorInputData.Reserve(ColorCount);
-
-        for (int32 i=0; i<SectionCount; ++i)
-        {
-            ColorInputData.Append(Sections[i]->Colors);
-        }
-    }
-    else
-    {
-        ColorInputData.Empty(1);
-        ColorInputData.Emplace(FColor::White);
-    }
-
-    // Vertex buffers
-
-    const uint32 PositionDataSize = PositionInputData.GetResourceDataSize();
     FVertexBufferRHIRef PositionData;
     FUnorderedAccessViewRHIRef PositionDataUAV;
 
     {
-        FRHIResourceCreateInfo CreateInfo(&PositionInputData);
+        const uint32 PositionDataSize = InputData.PositionData.GetResourceDataSize();
+        FRHIResourceCreateInfo CreateInfo(&InputData.PositionData);
         PositionData = RHICreateVertexBuffer(PositionDataSize, BUF_Static | BUF_UnorderedAccess, CreateInfo);
         PositionDataUAV = RHICreateUnorderedAccessView(PositionData, PF_R32_FLOAT);
     }
@@ -1060,116 +770,353 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSection_RT(
     FRULReadBuffer UVData;
     FRULReadBuffer ColorData;
 
-    FRULRWByteAddressBuffer RWTangentData;
-
     // Dispatch shader
 
-    RHICmdList.BeginComputePass(TEXT("AssignHeightMapToMeshSection"));
+    RHICmdList.BeginComputePass(TEXT("ApplyHeightMapToMeshSection"));
     {
         FSamplerStateRHIRef TextureSampler = bSampleWrap
             ? TStaticSamplerState<SF_Bilinear,AM_Wrap,AM_Wrap,AM_Wrap>::GetRHI()
             : TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
 
-        const FVector2D UVScale(UVScaleX, UVScaleY);
-
-        TPMUMeshUtilityAssignHeightMapToMeshSectionCS<0>::FBaseType* ComputeShader = nullptr;
+        TPMUMeshUtilityApplyHeightMapToMeshSectionCS<0>::FBaseType* ComputeShader = nullptr;
 
         uint32 ShaderFlags = 0;
-        ShaderFlags |= bUseUVInput     ? 0x01 : 0;
-        //ShaderFlags |= bMaskByColor    ? 0x02 : 0;
-        //ShaderFlags |= bAssignTangents ? 0x04 : 0;
+        ShaderFlags |= InputData.bUseUVInput ? 0x01 : 0;
 
         switch (ShaderFlags)
         {
-            case 0: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel)); break;
-            case 1: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel)); break;
-            //case 2: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<2>>(GetGlobalShaderMap(FeatureLevel)); break;
-            //case 3: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<3>>(GetGlobalShaderMap(FeatureLevel)); break;
-            //case 4: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<4>>(GetGlobalShaderMap(FeatureLevel)); break;
-            //case 5: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<5>>(GetGlobalShaderMap(FeatureLevel)); break;
-            //case 6: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<6>>(GetGlobalShaderMap(FeatureLevel)); break;
-            //case 7: ComputeShader = *TShaderMapRef<TPMUMeshUtilityAssignHeightMapToMeshSectionCS<7>>(GetGlobalShaderMap(FeatureLevel)); break;
+            case 0: ComputeShader = *TShaderMapRef<TPMUMeshUtilityApplyHeightMapToMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel)); break;
+            case 1: ComputeShader = *TShaderMapRef<TPMUMeshUtilityApplyHeightMapToMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel)); break;
         };
 
         check(ComputeShader != nullptr);
 
+        FIntVector4 Flags;
+        Flags.X = InputData.bUseTangentInput;
+        Flags.Y = InputData.bUseColorInput;
+        Flags.Z = bInverseColorMask;
+
         ComputeShader->SetShader(RHICmdList);
+
         // Bind height texture
-        ComputeShader->BindTexture(RHICmdList, TEXT("HeightTexture"), TEXT("HeightTextureSampler"), HeightTextureParam, TextureSampler);
+        ComputeShader->BindTexture(RHICmdList, TEXT("HeightTexture"), TEXT("HeightTextureSampler"), HeightTextureRef, TextureSampler);
+
         // Bind constants
-        ComputeShader->SetParameter(RHICmdList, TEXT("_VertexCount"), VertexCount);
+        ComputeShader->SetParameter(RHICmdList, TEXT("_VertexCount"), InputData.VertexCount);
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"), HeightScale);
+        ComputeShader->SetParameter(RHICmdList, TEXT("_Flags"), Flags);
         ComputeShader->SetParameter(RHICmdList, TEXT("_UVScale"), UVScale);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_AlongTangents"), bUseTangentInput ? 1.f : 0.f);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_MaskByColor"), bUseColorInput ? 1.f : 0.f);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_InverseMask"), bInverseColorMask ? 1.f : 0.f);
         ComputeShader->SetParameter(RHICmdList, TEXT("_ColorMask"), FVector4(0,0,0,1));
 
         // Bind position output data
         ComputeShader->BindUAV(RHICmdList, TEXT("OutPositionData"), PositionDataUAV);
 
-        // Bind tangent input data
-        {
-            check(!bUseTangentInput || TangentInputData.Num() == (2*PositionInputData.Num()));
-            check( bUseTangentInput || TangentInputData.Num() == 2);
-            TangentData.Initialize(TangentInputData.GetTypeSize(), TangentInputData.Num(), PF_R8G8B8A8_SNORM, &TangentInputData, BUF_Static);
-            ComputeShader->BindSRV(RHICmdList, TEXT("TangentData"), TangentData.SRV);
-        }
+        check(InputData.HasValidUVCount());
+        check(InputData.HasValidTangentCount());
+        check(InputData.HasValidColorCount());
 
         // Bind UV input data
-        if (bUseUVInput)
+        if (InputData.bUseUVInput)
         {
-            UVData.Initialize(UVInputData.GetTypeSize(), UVInputData.Num(), PF_G32R32F, &UVInputData, BUF_Static);
+            UVData.Initialize(InputData.UVData.GetTypeSize(), InputData.UVData.Num(), PF_G32R32F, &InputData.UVData, BUF_Static);
             ComputeShader->BindSRV(RHICmdList, TEXT("UVData"), UVData.SRV);
+        }
+
+        // Bind tangent input data
+        {
+            TangentData.Initialize(InputData.TangentData.GetTypeSize(), InputData.TangentData.Num(), PF_R8G8B8A8_SNORM, &InputData.TangentData, BUF_Static);
+            ComputeShader->BindSRV(RHICmdList, TEXT("TangentData"), TangentData.SRV);
         }
 
         // Bind color input data
         {
-            check(!bUseColorInput || ColorInputData.Num() == PositionInputData.Num());
-            check( bUseColorInput || ColorInputData.Num() == 1);
-            ColorData.Initialize(ColorInputData.GetTypeSize(), ColorInputData.Num(), PF_R8G8B8A8, &ColorInputData, BUF_Static);
+            ColorData.Initialize(InputData.ColorData.GetTypeSize(), InputData.ColorData.Num(), PF_R8G8B8A8, &InputData.ColorData, BUF_Static);
             ComputeShader->BindSRV(RHICmdList, TEXT("ColorData"), ColorData.SRV);
         }
 
-        //if (bAssignTangents)
-        //{
-        //    RWTangentData.Initialize(VertexCount*2*sizeof(uint32), BUF_Static);
-        //    ComputeShader->BindUAV(RHICmdList, TEXT("OutTangentData"), RWTangentData.UAV);
-        //}
-
-        ComputeShader->DispatchAndClear(RHICmdList, VertexCount, 1, 1);
+        ComputeShader->DispatchAndClear(RHICmdList, InputData.VertexCount, 1, 1);
     }
     RHICmdList.EndComputePass();
 
     // Copy shader result
 
     const FVector* PositionDataPtr = reinterpret_cast<FVector*>(RHILockVertexBuffer(PositionData, 0, PositionData->GetSize(), RLM_ReadOnly));
-    //const uint32* TangentDataPtr = nullptr;
-
-    //if (bAssignTangents)
-    //{
-    //    TangentDataPtr = reinterpret_cast<uint32*>(RHILockStructuredBuffer(RWTangentData.Buffer, 0, RWTangentData.Buffer->GetSize(), RLM_ReadOnly));
-    //}
 
     for (int32 i=0; i<SectionCount; ++i)
     {
         FPMUMeshSection& Section(*Sections[i]);
-        int32 Offset = SectionVertexOffsets[i];
+        int32 Offset = InputData.VertexOffsets[i];
 
         FVector* DstPosData = Section.Positions.GetData();
         FMemory::Memcpy(DstPosData, PositionDataPtr+Offset, Section.Positions.Num() * Section.Positions.GetTypeSize());
-
-        //if (bAssignTangents)
-        //{
-        //    uint32* DstTanData = Section.Tangents.GetData();
-        //    FMemory::Memcpy(DstTanData, TangentDataPtr+Offset*2, Section.Tangents.Num() * Section.Tangents.GetTypeSize());
-        //}
     }
 
     RHIUnlockVertexBuffer(PositionData);
+}
 
-    //if (bAssignTangents)
-    //{
-    //    RHIUnlockStructuredBuffer(RWTangentData.Buffer);
-    //}
+void UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections(
+    UObject* WorldContextObject,
+    TArray<FPMUMeshSectionRef> SectionRefs,
+    FPMUMeshApplySeamlessTileHeightParameters TilingParameters,
+    FPMUMeshApplyHeightParameters ShaderParameters,
+    UGWTTickEvent* CallbackEvent
+    )
+{
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+
+    if (! IsValid(World))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections() ABORTED, INVALID WORLD CONTEXT OBJECT"));
+        return;
+    }
+    else
+    if (! World->Scene)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections() ABORTED, INVALID WORLD SCENE"));
+        return;
+    }
+    else
+    if (! IsValid(WorldContextObject))
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections() ABORTED, INVALID MESH COMPONENT"));
+        return;
+    }
+    else
+    if (! TilingParameters.HasValidInputTextures())
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections() ABORTED, INVALID INPUT TEXTURES"));
+        return;
+    }
+
+    TArray<FPMUMeshSectionRef> FilteredSectionRefs;
+
+    for (const FPMUMeshSectionRef& Section : SectionRefs)
+    {
+        if (Section.HasValidSection() && Section.SectionPtr->HasGeometry())
+        {
+            FilteredSectionRefs.Emplace(Section);
+        }
+    }
+
+    if (FilteredSectionRefs.Num() < 1)
+    {
+        return;
+    }
+
+    FPMUMeshApplySeamlessTileHeightParametersRT TilingParametersRT;
+    TilingParametersRT = {
+        TilingParameters.HeightTextureA->Resource,
+        TilingParameters.HeightTextureB->Resource,
+        TilingParameters.NoiseTexture->Resource,
+        TilingParameters.NoiseUVScaleX,
+        TilingParameters.NoiseUVScaleY,
+        TilingParameters.HashConstantX,
+        TilingParameters.HashConstantY
+        };
+
+    struct FRenderParameter
+    {
+        ERHIFeatureLevel::Type FeatureLevel;
+        // Mesh Construction
+        TArray<FPMUMeshSectionRef> SectionRefs;
+        // Tiling Parameters
+        FPMUMeshApplySeamlessTileHeightParametersRT TilingParameters;
+        // Shader Parameters
+        FPMUMeshApplyHeightParameters ShaderParameters;
+        // Callback Event
+        UGWTTickEvent* CallbackEvent;
+    };
+
+    FRenderParameter RenderParameter = {
+        World->Scene->GetFeatureLevel(),
+        // Mesh Construction
+        FilteredSectionRefs,
+        // Tiling Parameters
+        TilingParametersRT,
+        // Shader Parameters
+        ShaderParameters,
+        // Callback Event
+        CallbackEvent
+        };
+
+    ENQUEUE_RENDER_COMMAND(PMUMeshUtility_ApplySeamlessTiledHeightMapToMeshSectionMulti)(
+        [RenderParameter](FRHICommandListImmediate& RHICmdList)
+        {
+            TArray<FPMUMeshSection*> Sections;
+
+            if (! RenderParameter.TilingParameters.HasValidInputTextures())
+            {
+                return;
+            }
+
+            for (const FPMUMeshSectionRef& SectionRef : RenderParameter.SectionRefs)
+            {
+                check(SectionRef.HasValidSection());
+                check(SectionRef.SectionPtr->HasGeometry());
+                Sections.Emplace(SectionRef.SectionPtr);
+            }
+
+            if (Sections.Num() > 0)
+            {
+                ApplySeamlessTiledHeightMapToMeshSections_RT(
+                    RHICmdList,
+                    RenderParameter.FeatureLevel,
+                    Sections,
+                    RenderParameter.TilingParameters,
+                    RenderParameter.ShaderParameters
+                    );
+            }
+
+            FGWTTickEventRef(RenderParameter.CallbackEvent).EnqueueCallback();
+        }
+    );
+}
+
+void UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections_RT(
+    FRHICommandListImmediate& RHICmdList,
+    ERHIFeatureLevel::Type FeatureLevel,
+    const TArray<FPMUMeshSection*>& Sections,
+    const FPMUMeshApplySeamlessTileHeightParametersRT& TilingParameters,
+    const FPMUMeshApplyHeightParameters& ShaderParameters
+    )
+{
+    const int32 SectionCount = Sections.Num();
+
+    FTextureRHIRef HeightTextureARef = TilingParameters.HeightTextureA->TextureRHI;
+    FTextureRHIRef HeightTextureBRef = TilingParameters.HeightTextureB->TextureRHI;
+    FTextureRHIRef NoiseTextureRef = TilingParameters.NoiseTexture->TextureRHI;
+
+    check(Sections.Num() > 0);
+
+    if (! HeightTextureARef || ! HeightTextureBRef || ! NoiseTextureRef)
+    {
+        return;
+    }
+
+    FApplyHeightMapInputData InputData;
+    InputData.Init(Sections, ShaderParameters);
+
+    // Get shader parameters
+
+    float HeightScale = ShaderParameters.HeightScale;
+
+    FVector2D UVScale;
+    UVScale.X = ShaderParameters.UVScaleX;
+    UVScale.Y = ShaderParameters.UVScaleY;
+
+    bool bInverseColorMask = ShaderParameters.bInverseColorMask;
+    bool bSampleWrap = ShaderParameters.bSampleWrap;
+
+    // Get tiling parameters
+
+    FVector2D NoiseUVScale;
+    NoiseUVScale.X = TilingParameters.NoiseUVScaleX;
+    NoiseUVScale.Y = TilingParameters.NoiseUVScaleY;
+
+    FVector2D HashConstants;
+    HashConstants.X = TilingParameters.HashConstantX;
+    HashConstants.Y = TilingParameters.HashConstantY;
+
+    // Create vertex buffers
+
+    FVertexBufferRHIRef PositionData;
+    FUnorderedAccessViewRHIRef PositionDataUAV;
+
+    {
+        const uint32 PositionDataSize = InputData.PositionData.GetResourceDataSize();
+        FRHIResourceCreateInfo CreateInfo(&InputData.PositionData);
+        PositionData = RHICreateVertexBuffer(PositionDataSize, BUF_Static | BUF_UnorderedAccess, CreateInfo);
+        PositionDataUAV = RHICreateUnorderedAccessView(PositionData, PF_R32_FLOAT);
+    }
+
+    FRULReadBuffer TangentData;
+    FRULReadBuffer UVData;
+    FRULReadBuffer ColorData;
+
+    // Dispatch shader
+
+    RHICmdList.BeginComputePass(TEXT("ApplySeamlessTiledHeightMapToMeshSection"));
+    {
+        FSamplerStateRHIRef TextureSampler = bSampleWrap
+            ? TStaticSamplerState<SF_Bilinear,AM_Wrap,AM_Wrap,AM_Wrap>::GetRHI()
+            : TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
+
+        TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS<0>::FBaseType* ComputeShader = nullptr;
+
+        uint32 ShaderFlags = 0;
+        ShaderFlags |= InputData.bUseUVInput ? 0x01 : 0;
+
+        switch (ShaderFlags)
+        {
+            case 0: ComputeShader = *TShaderMapRef<TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS<0>>(GetGlobalShaderMap(FeatureLevel)); break;
+            case 1: ComputeShader = *TShaderMapRef<TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS<1>>(GetGlobalShaderMap(FeatureLevel)); break;
+        };
+
+        check(ComputeShader != nullptr);
+
+        FIntVector4 Flags;
+        Flags.X = InputData.bUseTangentInput;
+        Flags.Y = InputData.bUseColorInput;
+        Flags.Z = bInverseColorMask;
+
+        ComputeShader->SetShader(RHICmdList);
+
+        // Bind height texture
+        ComputeShader->BindTexture(RHICmdList, TEXT("HeightTextureA"), TEXT("HeightTextureSampler"), HeightTextureARef, TextureSampler);
+        ComputeShader->BindTexture(RHICmdList, TEXT("HeightTextureB"), TEXT("HeightTextureSampler"), HeightTextureBRef, TextureSampler);
+        ComputeShader->BindTexture(RHICmdList, TEXT("NoiseTexture"), TEXT("HeightTextureSampler"), NoiseTextureRef, TextureSampler);
+
+        // Bind constants
+        ComputeShader->SetParameter(RHICmdList, TEXT("_VertexCount"), InputData.VertexCount);
+        ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"), HeightScale);
+        ComputeShader->SetParameter(RHICmdList, TEXT("_Flags"), Flags);
+        ComputeShader->SetParameter(RHICmdList, TEXT("_UVScale"), UVScale);
+        ComputeShader->SetParameter(RHICmdList, TEXT("_ColorMask"), FVector4(0,0,0,1));
+        ComputeShader->SetParameter(RHICmdList, TEXT("_NoiseUVScale"), NoiseUVScale);
+        ComputeShader->SetParameter(RHICmdList, TEXT("_HashConstants"), HashConstants);
+
+        // Bind position output data
+        ComputeShader->BindUAV(RHICmdList, TEXT("OutPositionData"), PositionDataUAV);
+
+        check(InputData.HasValidUVCount());
+        check(InputData.HasValidTangentCount());
+        check(InputData.HasValidColorCount());
+
+        // Bind UV input data
+        if (InputData.bUseUVInput)
+        {
+            UVData.Initialize(InputData.UVData.GetTypeSize(), InputData.UVData.Num(), PF_G32R32F, &InputData.UVData, BUF_Static);
+            ComputeShader->BindSRV(RHICmdList, TEXT("UVData"), UVData.SRV);
+        }
+
+        // Bind tangent input data
+        {
+            TangentData.Initialize(InputData.TangentData.GetTypeSize(), InputData.TangentData.Num(), PF_R8G8B8A8_SNORM, &InputData.TangentData, BUF_Static);
+            ComputeShader->BindSRV(RHICmdList, TEXT("TangentData"), TangentData.SRV);
+        }
+
+        // Bind color input data
+        {
+            ColorData.Initialize(InputData.ColorData.GetTypeSize(), InputData.ColorData.Num(), PF_R8G8B8A8, &InputData.ColorData, BUF_Static);
+            ComputeShader->BindSRV(RHICmdList, TEXT("ColorData"), ColorData.SRV);
+        }
+
+        ComputeShader->DispatchAndClear(RHICmdList, InputData.VertexCount, 1, 1);
+    }
+    RHICmdList.EndComputePass();
+
+    // Copy shader result
+
+    const FVector* PositionDataPtr = reinterpret_cast<FVector*>(RHILockVertexBuffer(PositionData, 0, PositionData->GetSize(), RLM_ReadOnly));
+
+    for (int32 i=0; i<SectionCount; ++i)
+    {
+        FPMUMeshSection& Section(*Sections[i]);
+        int32 Offset = InputData.VertexOffsets[i];
+
+        FVector* DstPosData = Section.Positions.GetData();
+        FMemory::Memcpy(DstPosData, PositionDataPtr+Offset, Section.Positions.Num() * Section.Positions.GetTypeSize());
+    }
+
+    RHIUnlockVertexBuffer(PositionData);
 }

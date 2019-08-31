@@ -41,16 +41,6 @@
 #define PMU_MESH_UTILITY_CREATE_GRID_MESH_SECTION_USE_REVERSE_WINDING 0
 #endif
 
-//struct VertexType
-//{
-//	float3 Position;
-//	float2 TextureCoordinate;
-//	uint TangentX;
-//	uint TangentZ;
-//	uint Color;
-//};
-
-//RWStructuredBuffer<VertexType> OutVertexData;
 RWByteAddressBuffer OutPositionData;
 RWByteAddressBuffer OutTangentData;
 RWBuffer<float2>    OutTexCoordData;
@@ -100,40 +90,6 @@ void MainCS(uint3 tid : SV_DispatchThreadID)
     OutPositionData.Store3(VertexIndex*POS_STRIDE, asuint(pos));
     OutTangentData.Store2(VertexIndex*TAN_STRIDE, uint2(ut, un));
     OutTexCoordData[VertexIndex] = uv;
-
-// Construct height map vertex normal
-#if 0
-
-    // Sample height values and calculate tangent vectors
-
-    float hv = Texture2DSample(HeightTexture, HeightTextureSampler, uv).x * _HeightScale;
-    float hN = Texture2DSample(HeightTexture, HeightTextureSampler, uv+uvo.zy).x * _HeightScale;
-    float hE = Texture2DSample(HeightTexture, HeightTextureSampler, uv+uvo.xz).x * _HeightScale;
-    float hW = Texture2DSample(HeightTexture, HeightTextureSampler, uv-uvo.xz).x * _HeightScale;
-    float hS = Texture2DSample(HeightTexture, HeightTextureSampler, uv-uvo.zy).x * _HeightScale;
-    float2 hWESN = float2(hE, hN) - float2(hW, hS);
-
-    float3 n = normalize(float3(-hWESN, 1));
-    float3 t = normalize(float3(1, 0, hWESN.x * .5f));
-
-    // Construct and assign vertex
-
-    VertexType Vertex;
-    Vertex.Position = float3(VertexId, hv);
-	Vertex.TextureCoordinate = VertexId;
-#if PMU_MESH_UTILITY_CREATE_GRID_MESH_SECTION_USE_REVERSE_WINDING
-	Vertex.TangentX = PackNormalizedFloat4(float4(-t, 0));
-	Vertex.TangentZ = PackNormalizedFloat4(float4(-n, 1));
-#else
-	Vertex.TangentX = PackNormalizedFloat4(float4(t, 0));
-	Vertex.TangentZ = PackNormalizedFloat4(float4(n, 1));
-#endif
-	Vertex.Color = ~0;
-
-    const uint VertexIndex = dot(VertexId, uint2(1, Stride));
-    //OutVertexData[VertexIndex] = Vertex;
-
-#endif
 
     // Write index except on the last axis dimension threads
 

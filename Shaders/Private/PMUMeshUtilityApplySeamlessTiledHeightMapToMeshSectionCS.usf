@@ -31,78 +31,21 @@
 		THREAD_SIZE_Y - The number of threads (y) to launch per workgroup
 ------------------------------------------------------------------------------*/
 
-#include "/Engine/Private/Common.ush"
+#include "PMUMeshUtilityApplyHeightMapToMeshSection_Common.ush"
 
-RWBuffer<float> OutPositionData;
-RWByteAddressBuffer OutTangentData;
+float2 _NoiseUVScale;
+float2 _HashConstants;
 
-Buffer<float4> ColorData;
-Buffer<float2> UVData;
-Buffer<float4> TangentData;
+Texture2D HeightTextureA;
+Texture2D HeightTextureB;
+Texture2D NoiseTexture;
 
-Texture2D HeightTexture;
 SamplerState HeightTextureSampler;
 
-uint _VertexCount;
-float _HeightScale;
-
-float2 _UVScale;
-float _AlongTangents;
-
-float _MaskByColor;
-float _InverseMask;
-float4 _ColorMask;
-
-#ifndef PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER
-#define PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER 0
-#endif
-
-#ifndef PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS
-#define PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS 0
-#endif
-
-#define TAN_STRIDE 8
-
-uint4 U32ToU8x4(uint v)
-{
-    uint4 unpacked;
-    unpacked.x = ((v >>  0) & 0xFF);
-    unpacked.y = ((v >>  8) & 0xFF);
-    unpacked.z = ((v >> 16) & 0xFF);
-    unpacked.w = ((v >> 24) & 0xFF);
-    return unpacked;
-}
-
-int4 U32ToI8x4(uint v)
-{
-    int4 unpacked;
-    unpacked.x = ((v >>  0) & 0xFF);
-    unpacked.y = ((v >>  8) & 0xFF);
-    unpacked.z = ((v >> 16) & 0xFF);
-    unpacked.w = ((v >> 24) & 0xFF);
-    return unpacked;
-}
-
-float4 U8x4ToSNF32x4(uint4 v)
-{
-    return (v/255.0f)*2.0f-1.0f;
-}
-
-float4 I8x4ToSNF32x4(int4 v)
-{
-    return v/127.0f;
-}
-
-uint PackNormalizedFloat4(float4 v)
-{
-	int4 n;
-    n = v * 127.4999f;
-    n = n & 0xFF;
-	return n.x | (n.y << 8) | (n.z << 16) | (n.w << 24);
-}
+#define SAMPLE_INDEX_COUNT 8
 
 [numthreads(THREAD_SIZE_X,1,1)]
-void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
+void ApplyHeightMap(uint3 tid : SV_DispatchThreadID)
 {
 	const uint VertexId = tid.x;
 
@@ -114,6 +57,8 @@ void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
 
     const uint PosAttrId = 3 * VertexId;
 
+    // Calculate UV
+
     float2 UV;
 
 #if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER
@@ -124,17 +69,42 @@ void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
     UV *= _UVScale;
 #endif
 
-    uint ColorId = VertexId * (_MaskByColor>.5f);
+    // Calculate sample index
+
+    float2 NoiseUV = UV * _NoiseUVScale;
+    float NoiseValue = Texture2DSample(NoiseTexture, HeightTextureSampler, NoiseUV).x;
+    NoiseValue *= SAMPLE_INDEX_COUNT;
+
+    float SampleIndex = floor(NoiseValue);
+    float SampleFrac = frac(NoiseValue);
+
+    float2 OffsetA = sin(_HashConstants *  SampleIndex    * 6.28318548);
+    float2 OffsetB = sin(_HashConstants * (SampleIndex+1) * 6.28318548);
+
+    // Calculate height value
+
+    float2 UVDDX = DDX(UV);
+    float2 UVDDY = DDY(UV);
+
+    float HeightA = Texture2DSampleGrad(HeightTextureA, HeightTextureSampler, UV+OffsetA, UVDDX, UVDDY).x;
+    float HeightB = Texture2DSampleGrad(HeightTextureB, HeightTextureSampler, UV+OffsetB, UVDDX, UVDDY).x;;
+
+    float HeightAlpha = SampleFrac - (HeightA-HeightB)*.1f;
+    float HeightSmoothAlpha = smoothstep(.2f, .8f, HeightAlpha);
+    float HeightValue = lerp(HeightA, HeightB, HeightSmoothAlpha);
+
+    // Calculate height mask
+
+    uint ColorId = VertexId * PMU_FLAG_MASK_BY_COLOR;
     float ColorMask;
     ColorMask = dot(ColorData[ColorId], _ColorMask);
-    ColorMask = (_InverseMask>.5f) ? (1.f-ColorMask) : ColorMask;
+    ColorMask = PMU_FLAG_INVERSE_COLOR_MASK ? (1.f-ColorMask) : ColorMask;
 
-    float hv;
-    hv = Texture2DSample(HeightTexture, HeightTextureSampler, UV).x;
+    // Calculate height offset
 
-    uint TangentZId = 2 * VertexId * (_AlongTangents>.5f) + 1;
+    uint TangentZId = 2 * VertexId * PMU_FLAG_ALONG_TANGENTS + 1;
     float3 HeightDirection = TangentData[TangentZId].xyz;
-    float3 HeightOffset = hv * _HeightScale * ColorMask * HeightDirection;
+    float3 HeightOffset = HeightValue * _HeightScale * ColorMask * HeightDirection;
 
     OutPositionData[PosAttrId  ] += HeightOffset.x;
     OutPositionData[PosAttrId+1] += HeightOffset.y;

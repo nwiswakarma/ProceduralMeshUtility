@@ -70,10 +70,101 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshApplyHeightParameters
     bool bSampleWrap = false;
 };
 
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUMeshApplySeamlessTileHeightParameters
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UTexture* HeightTextureA;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UTexture* HeightTextureB;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UTexture* NoiseTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float NoiseUVScaleX = 1.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float NoiseUVScaleY = 1.f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float HashConstantX = .135f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float HashConstantY = .350f;
+
+    FORCEINLINE bool HasValidInputTextures() const
+    {
+        return IsValid(HeightTextureA) && IsValid(HeightTextureB) && IsValid(NoiseTexture);
+    }
+};
+
+struct FPMUMeshApplySeamlessTileHeightParametersRT
+{
+    FTexture* HeightTextureA;
+    FTexture* HeightTextureB;
+    FTexture* NoiseTexture;
+    float NoiseUVScaleX;
+    float NoiseUVScaleY;
+    float HashConstantX;
+    float HashConstantY;
+
+    FORCEINLINE bool HasValidInputTextures() const
+    {
+        return HeightTextureA != nullptr
+            && HeightTextureB != nullptr
+            && NoiseTexture != nullptr;
+    }
+};
+
 UCLASS()
 class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
+
+    struct FApplyHeightMapInputData
+    {
+        TResourceArray<FVector, VERTEXBUFFER_ALIGNMENT> PositionData;
+        TResourceArray<FVector2D, VERTEXBUFFER_ALIGNMENT> UVData;
+        TResourceArray<uint32, VERTEXBUFFER_ALIGNMENT> TangentData;
+        TResourceArray<FColor, VERTEXBUFFER_ALIGNMENT> ColorData;
+        TArray<int32> VertexOffsets;
+
+        int32 VertexCount;
+        int32 UVCount;
+        int32 TangentCount;
+        int32 ColorCount;
+
+        bool bUseUVInput;
+        bool bUseTangentInput;
+        bool bUseColorInput;
+
+        void Init(const TArray<FPMUMeshSection*>& Sections, const FPMUMeshApplyHeightParameters& Parameters);
+
+        FORCEINLINE bool HasValidUVCount() const
+        {
+            return bUseUVInput
+                ? UVData.Num() == VertexCount
+                : TangentData.Num() == 0;
+        }
+
+        FORCEINLINE bool HasValidTangentCount() const
+        {
+            return bUseTangentInput
+                ? TangentData.Num() == 2*VertexCount
+                : TangentData.Num() == 2;
+        }
+
+        FORCEINLINE bool HasValidColorCount() const
+        {
+            return bUseColorInput
+                ? ColorData.Num() == VertexCount
+                : ColorData.Num() == 1;
+        }
+    };
 
 public:
 
@@ -112,49 +203,8 @@ public:
         float HeightScale
         );
 
-    UFUNCTION(BlueprintCallable)
-    static void AssignHeightMapToMeshSection(
-        UPMUMeshComponent* MeshComponent,
-        int32 SectionIndex,
-        UTexture* HeightTexture = nullptr,
-        float HeightScale = 1.f,
-        bool bUseUV = false,
-        float UVScaleX = 1.f,
-        float UVScaleY = 1.f,
-        bool bMaskByColor = true,
-        bool bInverseColorMask = false,
-        UGWTTickEvent* CallbackEvent = nullptr
-        );
-
-    UFUNCTION(BlueprintCallable, meta=(AdvancedDisplay="bUseUV,UVScaleX,UVScaleY,bMaskByColor,bInverseColorMask,CallbackEvent"))
-    static void AssignHeightMapToMeshSectionMulti(
-        UPMUMeshComponent* MeshComponent,
-        TArray<int32> SectionIndices,
-        UTexture* HeightTexture = nullptr,
-        float HeightScale = 1.f,
-        bool bUseUV = false,
-        float UVScaleX = 1.f,
-        float UVScaleY = 1.f,
-        bool bMaskByColor = true,
-        bool bInverseColorMask = false,
-        UGWTTickEvent* CallbackEvent = nullptr
-        );
-
-    static void AssignHeightMapToMeshSection_RT(
-        FRHICommandListImmediate& RHICmdList,
-        ERHIFeatureLevel::Type FeatureLevel,
-        const TArray<FPMUBaseMeshProxySection*>& Sections,
-        const FTexture& HeightTexture,
-        float HeightScale,
-        bool bUseUV,
-        float UVScaleX,
-        float UVScaleY,
-        bool bMaskByColor,
-        bool bInverseColorMask
-        );
-
-    UFUNCTION(BlueprintCallable, meta=(DisplayName="Apply Height Map To Mesh Section By Reference", AdvancedDisplay="CallbackEvent"))
-    static void ApplyHeightMapToMeshSectionMulti(
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Apply Height Map To Mesh Sections", AdvancedDisplay="CallbackEvent"))
+    static void ApplyHeightMapToMeshSections(
         UObject* WorldContextObject,
         TArray<FPMUMeshSectionRef> SectionRefs,
         UTexture* HeightTexture,
@@ -162,11 +212,28 @@ public:
         UGWTTickEvent* CallbackEvent = nullptr
         );
 
-    static void ApplyHeightMapToMeshSection_RT(
+    static void ApplyHeightMapToMeshSections_RT(
         FRHICommandListImmediate& RHICmdList,
         ERHIFeatureLevel::Type FeatureLevel,
         const TArray<FPMUMeshSection*>& Sections,
         const FTexture& HeightTexture,
         const FPMUMeshApplyHeightParameters& Parameters
+        );
+
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Apply Seamless Tiled Height Map To Mesh Sections", AdvancedDisplay="CallbackEvent"))
+    static void ApplySeamlessTiledHeightMapToMeshSections(
+        UObject* WorldContextObject,
+        TArray<FPMUMeshSectionRef> SectionRefs,
+        FPMUMeshApplySeamlessTileHeightParameters TilingParameters,
+        FPMUMeshApplyHeightParameters ShaderParameters,
+        UGWTTickEvent* CallbackEvent = nullptr
+        );
+
+    static void ApplySeamlessTiledHeightMapToMeshSections_RT(
+        FRHICommandListImmediate& RHICmdList,
+        ERHIFeatureLevel::Type FeatureLevel,
+        const TArray<FPMUMeshSection*>& Sections,
+        const FPMUMeshApplySeamlessTileHeightParametersRT& TilingParameters,
+        const FPMUMeshApplyHeightParameters& ShaderParameters
         );
 };
