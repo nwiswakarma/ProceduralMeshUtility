@@ -114,11 +114,6 @@ void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
 
     const uint PosAttrId = 3 * VertexId;
 
-    uint ColorId = VertexId * (_MaskByColor>.5f);
-    float ColorMask;
-    ColorMask = dot(ColorData[ColorId], _ColorMask);
-    ColorMask = (_InverseMask>.5f) ? (1.f-ColorMask) : ColorMask;
-
     float2 UV;
 
 #if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER
@@ -129,38 +124,13 @@ void AssignHeightMap_PositionOnlyCS(uint3 tid : SV_DispatchThreadID)
     UV *= _UVScale;
 #endif
 
+    uint ColorId = VertexId * (_MaskByColor>.5f);
+    float ColorMask;
+    ColorMask = dot(ColorData[ColorId], _ColorMask);
+    ColorMask = (_InverseMask>.5f) ? (1.f-ColorMask) : ColorMask;
+
     float hv;
     hv = Texture2DSample(HeightTexture, HeightTextureSampler, UV).x;
-
-#if PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_ASSIGN_TANGENTS
-    const uint TanAttrId = 2 * VertexId;
-    const float2 uvo = _UVScale;
-
-// 4 Samples
-#if 1
-    float hpx = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(uvo.x, 0.f)).x;
-    float hpy = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(0.f, uvo.y)).x;
-    float hnx = Texture2DSample(HeightTexture, HeightTextureSampler, UV-float2(uvo.x, 0.f)).x;
-    float hny = Texture2DSample(HeightTexture, HeightTextureSampler, UV-float2(0.f, uvo.y)).x;
-
-    float3 nx = float3(1,0, (hpx-hnx)*_HeightScale);
-    float3 ny = float3(0,1, (hpy-hny)*_HeightScale);
-    float3 normal = normalize(cross(nx, ny));
-// 3 Samples
-#else
-    float hx = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(uvo.x, 0.f)).x;
-    float hy = Texture2DSample(HeightTexture, HeightTextureSampler, UV+float2(0.f, uvo.y)).x;
-
-    float3 nx = float3(1,0, (hx-hv)*_HeightScale);
-    float3 ny = float3(0,1, (hy-hv)*_HeightScale);
-    float3 normal = normalize(cross(nx, ny));
-#endif
-
-    uint ut = PackNormalizedFloat4(float4(1,0,0,0));
-    uint un = PackNormalizedFloat4(float4(normal,1.f));
-
-    OutTangentData.Store2(VertexId*TAN_STRIDE, uint2(ut,un));
-#endif
 
     uint TangentZId = 2 * VertexId * (_AlongTangents>.5f) + 1;
     float3 HeightDirection = TangentData[TangentZId].xyz;
