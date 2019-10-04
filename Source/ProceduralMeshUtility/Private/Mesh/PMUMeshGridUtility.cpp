@@ -147,39 +147,6 @@ void UPMUMeshGridUtility::GenerateMeshAlongLine(FPMUMeshSectionRef OutSectionRef
     GenerateMeshAlongLine(OutSection, Points, Tangents, Distances, Offset, StepCount);
 }
 
-void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSectionRef OutSectionRef, const TArray<FVector2D>& Points, float GridSize, float Offset, int32 StepCount, bool bClosedPoly)
-{
-    const int32 PointCount = Points.Num();
-
-    // Validate section output
-    if (! OutSectionRef.HasValidSection())
-    {
-        return;
-    }
-
-    // Validate geometry input
-    if ((bClosedPoly && PointCount < 3) || (!bClosedPoly && PointCount < 2))
-    {
-        return;
-    }
-
-    // Validate generation parameters
-    if (GridSize < KINDA_SMALL_NUMBER || FMath::Abs(Offset) < KINDA_SMALL_NUMBER)
-    {
-        return;
-    }
-
-    TArray<FVector2D> Tangents;
-    TArray<float> Distances;
-
-    GenerateLineData(Tangents, Distances, Points, bClosedPoly);
-
-    FPMUMeshSection& OutSection(*OutSectionRef.SectionPtr);
-    StepCount = FMath::Max(0, StepCount);
-
-    GenerateMeshAlongLineUniform(OutSection, Points, Tangents, Distances, GridSize, Offset, StepCount, bClosedPoly);
-}
-
 void UPMUMeshGridUtility::GenerateMeshAlongLine(FPMUMeshSection& OutSection, const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, float Offset, int32 StepCount)
 {
     check(FMath::Abs(Offset) > KINDA_SMALL_NUMBER);
@@ -303,7 +270,42 @@ void UPMUMeshGridUtility::GenerateMeshAlongLine(FPMUMeshSection& OutSection, con
     }
 }
 
-void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSection, const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, float GridSize, float Offset, int32 StepCount, bool bClosedPoly)
+void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSectionRef OutSectionRef, const TArray<FVector2D>& Points, float GridSize, float Offset, float ExtrudeOffset, int32 StepCount, bool bClosedPoly)
+{
+    const int32 PointCount = Points.Num();
+
+    // Validate section output
+    if (! OutSectionRef.HasValidSection())
+    {
+        return;
+    }
+
+    // Validate geometry input
+    if ((bClosedPoly && PointCount < 3) || (!bClosedPoly && PointCount < 2))
+    {
+        return;
+    }
+
+    // Validate generation parameters
+    if (GridSize < KINDA_SMALL_NUMBER || FMath::Abs(Offset) < KINDA_SMALL_NUMBER)
+    {
+        return;
+    }
+
+    TArray<FVector2D> Tangents;
+    TArray<float> Distances;
+
+    GenerateLineData(Tangents, Distances, Points, bClosedPoly);
+
+    FPMUMeshSection& OutSection(*OutSectionRef.SectionPtr);
+
+    StepCount = FMath::Max(0, StepCount);
+    ExtrudeOffset = FMath::Max(0.f, ExtrudeOffset);
+
+    GenerateMeshAlongLineUniform(OutSection, Points, Tangents, Distances, GridSize, Offset, ExtrudeOffset, StepCount, bClosedPoly);
+}
+
+void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSection, const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, float GridSize, float Offset, float ExtrudeOffset, int32 StepCount, bool bClosedPoly)
 {
     check(GridSize > KINDA_SMALL_NUMBER);
     check(FMath::Abs(Offset) > KINDA_SMALL_NUMBER);
@@ -311,26 +313,31 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
     check(Positions.Num() > 1);
 
     const int32 LinePointCount = Positions.Num();
-
     const float LineLength = Distances.Last();
 
     const int32 SegmentCount = FMath::CeilToInt(LineLength / GridSize);
     const int32 PointCount = SegmentCount+1;
 
+    const bool bGenerateExtrude = ExtrudeOffset > KINDA_SMALL_NUMBER;
+    const int32 ExtrudeVertexCount = bGenerateExtrude ? 2 : 0;
+
     const int32 VertexCountZ = 2 + StepCount;
-    const int32 VertexCount = PointCount*VertexCountZ;
-    const int32 QuadPerSegment = (StepCount+1);
+    const int32 VertexZLastIndex = VertexCountZ-1;
+    const int32 VertexCountPerPoint = VertexCountZ + ExtrudeVertexCount;
+    const int32 VertexCount = PointCount*VertexCountPerPoint;
+    const int32 QuadPerSegment = VertexCountPerPoint-1;
 
     const float SegmentLength = LineLength / SegmentCount;
-    const float VertOffsetZ = Offset / QuadPerSegment;
+    const float VertOffsetZ = Offset / (VertexCountZ-1);
     const float InvDist = 1.f/Distances.Last();
-    const float InvUVY = 1.f/(VertexCountZ-1);
+    const float InvUVY = 1.f/(VertexCountPerPoint-1);
 
     const int32 IndexCount = SegmentCount*QuadPerSegment*6;
 
     TArray<FVector>& OutPositions(OutSection.Positions);
     TArray<FVector2D>& OutUVs(OutSection.UVs);
     TArray<uint32>& OutTangents(OutSection.Tangents);
+    TArray<FColor>& OutColors(OutSection.Colors);
     TArray<uint32>& OutIndices(OutSection.Indices);
     FBox& Bounds(OutSection.SectionLocalBox);
 
@@ -338,6 +345,7 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
     OutPositions.Reserve(VertexCount);
     OutUVs.Reserve(VertexCount);
     OutTangents.Reserve(VertexCount*2);
+    OutColors.Reserve(VertexCount);
     OutIndices.Reserve(IndexCount);
 
     float CurrentDistance = 0.f;
@@ -377,24 +385,46 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
             Tangent1.Normalize();
         }
 
-        FVector2D Position = Point;
         FVector2D Tangent = Tangent0;
+        FVector2D Normal(Tangent.Y, -Tangent.X);
         FVector4 TangentX(Tangent.X, Tangent.Y, 0,0);
-        FVector4 TangentZ(-Tangent.Y, Tangent.X, 0,1);
+        FVector4 TangentZ(Normal.X, Normal.Y, 0,1);
+
+        FVector2D OffsetXY = Normal*ExtrudeOffset;
+        FVector2D Position = Point;
 
         float UVX = Distance * InvDist;
         float UVY = 0.f;
 
-        float OffsetZ = 0.f;
+        if (bGenerateExtrude)
+        {
+            OutPositions.Emplace(Position, 0.f);
+            OutUVs.Emplace(UVX, UVY);
+            OutTangents.Emplace(FPackedNormal(FVector4(1,0,0,0)).Vector.Packed);
+            OutTangents.Emplace(FPackedNormal(FVector4(0,0,1,1)).Vector.Packed);
+            OutColors.Emplace(0,0,0,0);
+            UVY += InvUVY;
+            Bounds += OutPositions.Last();
+        }
 
         for (int32 zi=0; zi<VertexCountZ; ++zi)
         {
-            OutPositions.Emplace(Position, OffsetZ);
+            OutPositions.Emplace(OffsetXY+Position, zi*VertOffsetZ);
             OutUVs.Emplace(UVX, UVY);
             OutTangents.Emplace(FPackedNormal(TangentX).Vector.Packed);
             OutTangents.Emplace(FPackedNormal(TangentZ).Vector.Packed);
+            OutColors.Emplace(FColor::White);
+            UVY += InvUVY;
+            Bounds += OutPositions.Last();
+        }
 
-            OffsetZ += VertOffsetZ;
+        if (bGenerateExtrude)
+        {
+            OutPositions.Emplace(Position, VertexZLastIndex*VertOffsetZ);
+            OutUVs.Emplace(UVX, UVY);
+            OutTangents.Emplace(FPackedNormal(FVector4(1,0, 0,0)).Vector.Packed);
+            OutTangents.Emplace(FPackedNormal(FVector4(0,0,-1,1)).Vector.Packed);
+            OutColors.Emplace(0,0,0,0);
             UVY += InvUVY;
             Bounds += OutPositions.Last();
         }
@@ -437,31 +467,53 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
         float DistAlpha = DistDelta / Length;
 
         FVector2D Tangent = FMath::LerpStable(Tangent0, Tangent1, DistAlpha).GetSafeNormal();
-        FVector2D Position = Point+Tangent*DistDelta;
+        FVector2D Normal(Tangent.Y, -Tangent.X);
         FVector4 TangentX(Tangent.X, Tangent.Y, 0,0);
-        FVector4 TangentZ(-Tangent.Y, Tangent.X, 0,1);
+        FVector4 TangentZ(Normal.X, Normal.Y, 0,1);
+
+        FVector2D OffsetXY = Normal*ExtrudeOffset;
+        FVector2D Position = Point+Tangent*DistDelta;
 
         float UVX = CurrentDistance * InvDist;
         float UVY = 0.f;
 
-        float OffsetZ = 0.f;
+        if (bGenerateExtrude)
+        {
+            OutPositions.Emplace(Position, 0.f);
+            OutUVs.Emplace(UVX, UVY);
+            OutTangents.Emplace(FPackedNormal(FVector4(1,0,0,0)).Vector.Packed);
+            OutTangents.Emplace(FPackedNormal(FVector4(0,0,1,1)).Vector.Packed);
+            OutColors.Emplace(0,0,0,0);
+            UVY += InvUVY;
+            Bounds += OutPositions.Last();
+        }
 
         for (int32 zi=0; zi<VertexCountZ; ++zi)
         {
-            OutPositions.Emplace(Position, OffsetZ);
+            OutPositions.Emplace(OffsetXY+Position, zi*VertOffsetZ);
             OutUVs.Emplace(UVX, UVY);
             OutTangents.Emplace(FPackedNormal(TangentX).Vector.Packed);
             OutTangents.Emplace(FPackedNormal(TangentZ).Vector.Packed);
+            OutColors.Emplace(FColor::White);
+            UVY += InvUVY;
+            Bounds += OutPositions.Last();
+        }
 
-            OffsetZ += VertOffsetZ;
+        if (bGenerateExtrude)
+        {
+            OutPositions.Emplace(Position, VertexZLastIndex*VertOffsetZ);
+            OutUVs.Emplace(UVX, UVY);
+            OutTangents.Emplace(FPackedNormal(FVector4(1,0, 0,0)).Vector.Packed);
+            OutTangents.Emplace(FPackedNormal(FVector4(0,0,-1,1)).Vector.Packed);
+            OutColors.Emplace(0,0,0,0);
             UVY += InvUVY;
             Bounds += OutPositions.Last();
         }
 
         // Generate faces
 
-        int32 VertexIndex0 = (vi-1) * VertexCountZ;
-        int32 VertexIndex1 = (vi  ) * VertexCountZ;
+        int32 VertexIndex0 = (vi-1) * VertexCountPerPoint;
+        int32 VertexIndex1 = (vi  ) * VertexCountPerPoint;
 
         for (int32 qi=0; qi<QuadPerSegment; ++qi)
         {
@@ -473,22 +525,22 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
             if (bFlipIndexOrder)
             {
                 OutIndices.Emplace(vi0);
-                OutIndices.Emplace(vi2);
                 OutIndices.Emplace(vi1);
+                OutIndices.Emplace(vi2);
 
                 OutIndices.Emplace(vi2);
-                OutIndices.Emplace(vi3);
                 OutIndices.Emplace(vi1);
+                OutIndices.Emplace(vi3);
             }
             else
             {
                 OutIndices.Emplace(vi0);
-                OutIndices.Emplace(vi1);
                 OutIndices.Emplace(vi2);
+                OutIndices.Emplace(vi1);
 
                 OutIndices.Emplace(vi2);
-                OutIndices.Emplace(vi1);
                 OutIndices.Emplace(vi3);
+                OutIndices.Emplace(vi1);
             }
         }
 
@@ -505,37 +557,59 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
         Point = Positions[PointIndex];
         Distance = Distances[PointIndex];
 
-        FVector2D Position = Point;
         FVector2D Tangent = bClosedPoly
             ? (Tangents[LinePointCount-2]+Tangents[0])*.5f
             : Tangents[LinePointCount-1];
 
         Tangent.Normalize();
 
+        FVector2D Normal(Tangent.Y, -Tangent.X);
         FVector4 TangentX(Tangent.X, Tangent.Y, 0,0);
-        FVector4 TangentZ(-Tangent.Y, Tangent.X, 0,1);
+        FVector4 TangentZ(Normal.X, Normal.Y, 0,1);
+
+        FVector2D OffsetXY = Normal*ExtrudeOffset;
+        FVector2D Position = Point;
 
         float UVX = Distance * InvDist;
         float UVY = 0.f;
 
-        float OffsetZ = 0.f;
+        if (bGenerateExtrude)
+        {
+            OutPositions.Emplace(Position, 0.f);
+            OutUVs.Emplace(UVX, UVY);
+            OutTangents.Emplace(FPackedNormal(FVector4(1,0,0,0)).Vector.Packed);
+            OutTangents.Emplace(FPackedNormal(FVector4(0,0,1,1)).Vector.Packed);
+            OutColors.Emplace(0,0,0,0);
+            UVY += InvUVY;
+            Bounds += OutPositions.Last();
+        }
 
         for (int32 zi=0; zi<VertexCountZ; ++zi)
         {
-            OutPositions.Emplace(Position, OffsetZ);
+            OutPositions.Emplace(OffsetXY+Position, zi*VertOffsetZ);
             OutUVs.Emplace(UVX, UVY);
             OutTangents.Emplace(FPackedNormal(TangentX).Vector.Packed);
             OutTangents.Emplace(FPackedNormal(TangentZ).Vector.Packed);
+            OutColors.Emplace(FColor::White);
+            UVY += InvUVY;
+            Bounds += OutPositions.Last();
+        }
 
-            OffsetZ += VertOffsetZ;
+        if (bGenerateExtrude)
+        {
+            OutPositions.Emplace(Position, VertexZLastIndex*VertOffsetZ);
+            OutUVs.Emplace(UVX, UVY);
+            OutTangents.Emplace(FPackedNormal(FVector4(1,0, 0,0)).Vector.Packed);
+            OutTangents.Emplace(FPackedNormal(FVector4(0,0,-1,1)).Vector.Packed);
+            OutColors.Emplace(0,0,0,0);
             UVY += InvUVY;
             Bounds += OutPositions.Last();
         }
 
         // Generate faces
 
-        int32 VertexIndex0 = (PointCount-2) * VertexCountZ;
-        int32 VertexIndex1 = (PointCount-1) * VertexCountZ;
+        int32 VertexIndex0 = (PointCount-2) * VertexCountPerPoint;
+        int32 VertexIndex1 = (PointCount-1) * VertexCountPerPoint;
 
         for (int32 qi=0; qi<QuadPerSegment; ++qi)
         {
@@ -547,22 +621,22 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
             if (bFlipIndexOrder)
             {
                 OutIndices.Emplace(vi0);
-                OutIndices.Emplace(vi2);
                 OutIndices.Emplace(vi1);
+                OutIndices.Emplace(vi2);
 
                 OutIndices.Emplace(vi2);
-                OutIndices.Emplace(vi3);
                 OutIndices.Emplace(vi1);
+                OutIndices.Emplace(vi3);
             }
             else
             {
                 OutIndices.Emplace(vi0);
-                OutIndices.Emplace(vi1);
                 OutIndices.Emplace(vi2);
+                OutIndices.Emplace(vi1);
 
                 OutIndices.Emplace(vi2);
-                OutIndices.Emplace(vi1);
                 OutIndices.Emplace(vi3);
+                OutIndices.Emplace(vi1);
             }
         }
 

@@ -96,9 +96,7 @@ void ApplyHeightMap(uint3 tid : SV_DispatchThreadID)
     // Calculate height mask
 
     uint ColorId = VertexId * PMU_FLAG_MASK_BY_COLOR;
-    float ColorMask;
-    ColorMask = dot(ColorData[ColorId], _ColorMask);
-    ColorMask = PMU_FLAG_INVERSE_COLOR_MASK ? (1.f-ColorMask) : ColorMask;
+    float ColorMask = dot(ColorData[ColorId] * _ColorMask, 1);
 
     // Calculate height offset
 

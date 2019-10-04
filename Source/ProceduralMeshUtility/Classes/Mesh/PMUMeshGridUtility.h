@@ -43,9 +43,16 @@ public:
     UFUNCTION(BlueprintCallable)
     static void GenerateMeshAlongLine(FPMUMeshSectionRef OutSectionRef, const TArray<FVector2D>& Points, float Offset = 1.f, int32 StepCount = 1, bool bClosedPoly = true);
 
-    UFUNCTION(BlueprintCallable)
-    static void GenerateMeshAlongLineUniform(FPMUMeshSectionRef OutSectionRef, const TArray<FVector2D>& Points, float GridSize = 1.f, float Offset = 1.f, int32 StepCount = 1, bool bClosedPoly = true);
+    UFUNCTION(BlueprintCallable, meta=(DisplayName="Generate Mesh Along Line (Uniform)"))
+    static void K2_GenerateMeshAlongLineUniform(FPMUMeshSectionRef OutSectionRef, const TArray<FVector2D>& Points, float GridSize = 1.f, float Offset = 1.f, float ExtrudeOffset = 0.f, int32 StepCount = 1, bool bClosedPoly = true);
 
     static void GenerateMeshAlongLine(FPMUMeshSection& OutSection, const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, float Offset, int32 StepCount);
-    static void GenerateMeshAlongLineUniform(FPMUMeshSection& OutSection, const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, float GridSize, float Offset, int32 StepCount, bool bClosedPoly);
+
+    static void GenerateMeshAlongLineUniform(FPMUMeshSectionRef OutSectionRef, const TArray<FVector2D>& Points, float GridSize = 1.f, float Offset = 1.f, float ExtrudeOffset = 0.f, int32 StepCount = 1, bool bClosedPoly = true);
+    static void GenerateMeshAlongLineUniform(FPMUMeshSection& OutSection, const TArray<FVector2D>& Positions, const TArray<FVector2D>& Tangents, const TArray<float>& Distances, float GridSize, float Offset, float ExtrudeOffset, int32 StepCount, bool bClosedPoly);
 };
+
+FORCEINLINE_DEBUGGABLE void UPMUMeshGridUtility::K2_GenerateMeshAlongLineUniform(FPMUMeshSectionRef OutSectionRef, const TArray<FVector2D>& Points, float GridSize, float Offset, float ExtrudeOffset, int32 StepCount, bool bClosedPoly)
+{
+    GenerateMeshAlongLineUniform(OutSectionRef, Points, GridSize, Offset, ExtrudeOffset, StepCount, bClosedPoly);
+}

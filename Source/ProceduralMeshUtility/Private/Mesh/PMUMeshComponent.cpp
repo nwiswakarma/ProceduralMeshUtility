@@ -222,6 +222,19 @@ int32 UPMUMeshComponent::GetNumSections() const
 	return Sections.Num();
 }
 
+void UPMUMeshComponent::GetSectionRefs(TArray<FPMUMeshSectionRef>& SectionRefs, const TArray<int32>& SectionIndices)
+{
+    SectionRefs.Reset(SectionIndices.Num());
+
+    for (int32 i : SectionIndices)
+    {
+        if (Sections.IsValidIndex(i))
+        {
+            SectionRefs.Emplace(Sections[i]);
+        }
+    }
+}
+
 FPMUMeshSectionRef UPMUMeshComponent::GetSectionRef(int32 SectionIndex)
 {
     FPMUMeshSectionRef SectionRef;

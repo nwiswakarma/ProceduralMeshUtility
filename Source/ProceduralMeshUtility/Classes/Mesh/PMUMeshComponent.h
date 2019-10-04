@@ -178,6 +178,9 @@ public:
 	FPMUMeshSectionRef GetSectionRef(int32 SectionIndex);
 
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
+	void GetSectionRefs(TArray<FPMUMeshSectionRef>& SectionRefs, const TArray<int32>& SectionIndices);
+
+	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
 	void GetAllNonEmptySectionIndices(TArray<int32>& SectionIndices);
 
 	/** Add simple collision convex to this component */

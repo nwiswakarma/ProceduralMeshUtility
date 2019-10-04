@@ -60,16 +60,14 @@ void ApplyHeightMap(uint3 tid : SV_DispatchThreadID)
 #endif
 
     uint ColorId = VertexId * PMU_FLAG_MASK_BY_COLOR;
-    float ColorMask;
-    ColorMask = dot(ColorData[ColorId], _ColorMask);
-    ColorMask = PMU_FLAG_INVERSE_COLOR_MASK ? (1.f-ColorMask) : ColorMask;
+    float ColorMask = dot(ColorData[ColorId] * _ColorMask, 1);
 
-    float hv;
-    hv = Texture2DSample(HeightTexture, HeightTextureSampler, UV).x;
+    float HeightValue;
+    HeightValue = Texture2DSample(HeightTexture, HeightTextureSampler, UV).x;
 
     uint TangentZId = 2 * VertexId * PMU_FLAG_ALONG_TANGENTS + 1;
     float3 HeightDirection = TangentData[TangentZId].xyz;
-    float3 HeightOffset = hv * _HeightScale * ColorMask * HeightDirection;
+    float3 HeightOffset = HeightValue * _HeightScale * ColorMask * HeightDirection;
 
     OutPositionData[PosAttrId  ] += HeightOffset.x;
     OutPositionData[PosAttrId+1] += HeightOffset.y;

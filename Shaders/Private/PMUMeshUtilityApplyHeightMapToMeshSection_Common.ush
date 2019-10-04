@@ -50,7 +50,7 @@ int4 _Flags;
 
 #define PMU_FLAG_ALONG_TANGENTS     _Flags.x
 #define PMU_FLAG_MASK_BY_COLOR      _Flags.y
-#define PMU_FLAG_INVERSE_COLOR_MASK _Flags.z
+#define PMU_FLAG_INVERSE_COLOR_MASK 0
 
 #ifndef PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER
 #define PMU_MESH_UTILITY_ASSIGN_HEIGHT_MAP_USE_UV_BUFFER 0
@@ -92,4 +92,9 @@ uint PackNormalizedFloat4(float4 v)
     n = v * 127.4999f;
     n = n & 0xFF;
 	return n.x | (n.y << 8) | (n.z << 16) | (n.w << 24);
+}
+
+float GetColorMask(float4 v)
+{
+    return dot(v*float4(1,1,1,0), _ColorMask);
 }

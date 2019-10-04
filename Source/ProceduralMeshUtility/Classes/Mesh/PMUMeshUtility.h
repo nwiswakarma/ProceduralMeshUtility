@@ -58,7 +58,7 @@ struct PROCEDURALMESHUTILITY_API FPMUMeshApplyHeightParameters
     bool bMaskByColor = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    bool bInverseColorMask = false;
+    FLinearColor ColorMask;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bAlongTangents = false;
@@ -148,7 +148,7 @@ class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibra
         {
             return bUseUVInput
                 ? UVData.Num() == VertexCount
-                : TangentData.Num() == 0;
+                : UVData.Num() == 0;
         }
 
         FORCEINLINE bool HasValidTangentCount() const

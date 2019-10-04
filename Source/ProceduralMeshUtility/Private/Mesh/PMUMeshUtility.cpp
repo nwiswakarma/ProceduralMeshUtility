@@ -526,9 +526,6 @@ void UPMUMeshUtility::FApplyHeightMapInputData::Init(const TArray<FPMUMeshSectio
     bool bMaskByColor = Parameters.bMaskByColor;
     bool bAlongTangents = Parameters.bAlongTangents;
 
-    bool bInverseColorMask = Parameters.bInverseColorMask;
-    bool bSampleWrap = Parameters.bSampleWrap;
-
     // Calculate vertex offsets and total vertex count
 
     const int32 SectionCount = Sections.Num();
@@ -751,7 +748,12 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSections_RT(
     UVScale.X = Parameters.UVScaleX;
     UVScale.Y = Parameters.UVScaleY;
 
-    bool bInverseColorMask = Parameters.bInverseColorMask;
+    FVector4 ColorMask;
+    ColorMask.X = Parameters.ColorMask.R;
+    ColorMask.Y = Parameters.ColorMask.G;
+    ColorMask.Z = Parameters.ColorMask.B;
+    ColorMask.W = Parameters.ColorMask.A;
+
     bool bSampleWrap = Parameters.bSampleWrap;
 
     // Create vertex buffers
@@ -794,7 +796,6 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSections_RT(
         FIntVector4 Flags;
         Flags.X = InputData.bUseTangentInput;
         Flags.Y = InputData.bUseColorInput;
-        Flags.Z = bInverseColorMask;
 
         ComputeShader->SetShader(RHICmdList);
 
@@ -806,7 +807,7 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSections_RT(
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"), HeightScale);
         ComputeShader->SetParameter(RHICmdList, TEXT("_Flags"), Flags);
         ComputeShader->SetParameter(RHICmdList, TEXT("_UVScale"), UVScale);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_ColorMask"), FVector4(0,0,0,1));
+        ComputeShader->SetParameter(RHICmdList, TEXT("_ColorMask"), ColorMask);
 
         // Bind position output data
         ComputeShader->BindUAV(RHICmdList, TEXT("OutPositionData"), PositionDataUAV);
@@ -830,7 +831,7 @@ void UPMUMeshUtility::ApplyHeightMapToMeshSections_RT(
 
         // Bind color input data
         {
-            ColorData.Initialize(InputData.ColorData.GetTypeSize(), InputData.ColorData.Num(), PF_R8G8B8A8, &InputData.ColorData, BUF_Static);
+            ColorData.Initialize(InputData.ColorData.GetTypeSize(), InputData.ColorData.Num(), PF_B8G8R8A8, &InputData.ColorData, BUF_Static);
             ComputeShader->BindSRV(RHICmdList, TEXT("ColorData"), ColorData.SRV);
         }
 
@@ -1004,7 +1005,12 @@ void UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections_RT(
     UVScale.X = ShaderParameters.UVScaleX;
     UVScale.Y = ShaderParameters.UVScaleY;
 
-    bool bInverseColorMask = ShaderParameters.bInverseColorMask;
+    FVector4 ColorMask;
+    ColorMask.X = ShaderParameters.ColorMask.R;
+    ColorMask.Y = ShaderParameters.ColorMask.G;
+    ColorMask.Z = ShaderParameters.ColorMask.B;
+    ColorMask.W = ShaderParameters.ColorMask.A;
+
     bool bSampleWrap = ShaderParameters.bSampleWrap;
 
     // Get tiling parameters
@@ -1057,7 +1063,6 @@ void UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections_RT(
         FIntVector4 Flags;
         Flags.X = InputData.bUseTangentInput;
         Flags.Y = InputData.bUseColorInput;
-        Flags.Z = bInverseColorMask;
 
         ComputeShader->SetShader(RHICmdList);
 
@@ -1071,7 +1076,7 @@ void UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections_RT(
         ComputeShader->SetParameter(RHICmdList, TEXT("_HeightScale"), HeightScale);
         ComputeShader->SetParameter(RHICmdList, TEXT("_Flags"), Flags);
         ComputeShader->SetParameter(RHICmdList, TEXT("_UVScale"), UVScale);
-        ComputeShader->SetParameter(RHICmdList, TEXT("_ColorMask"), FVector4(0,0,0,1));
+        ComputeShader->SetParameter(RHICmdList, TEXT("_ColorMask"), ColorMask);
         ComputeShader->SetParameter(RHICmdList, TEXT("_NoiseUVScale"), NoiseUVScale);
         ComputeShader->SetParameter(RHICmdList, TEXT("_HashConstants"), HashConstants);
 
@@ -1097,7 +1102,7 @@ void UPMUMeshUtility::ApplySeamlessTiledHeightMapToMeshSections_RT(
 
         // Bind color input data
         {
-            ColorData.Initialize(InputData.ColorData.GetTypeSize(), InputData.ColorData.Num(), PF_R8G8B8A8, &InputData.ColorData, BUF_Static);
+            ColorData.Initialize(InputData.ColorData.GetTypeSize(), InputData.ColorData.Num(), PF_B8G8R8A8, &InputData.ColorData, BUF_Static);
             ComputeShader->BindSRV(RHICmdList, TEXT("ColorData"), ColorData.SRV);
         }
 
