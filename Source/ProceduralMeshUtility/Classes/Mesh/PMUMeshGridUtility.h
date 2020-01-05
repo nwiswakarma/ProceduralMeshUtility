@@ -74,7 +74,6 @@ public:
         int32 DimensionY = 10,
         float UnitScale = 10.f,
         bool bClearSection = false
-        //TArray<FIntPoint>* DebugPoints = nullptr
         );
 };
 

@@ -738,7 +738,6 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
     int32 DimensionY,
     float UnitScale,
     bool bClearSection
-    //TArray<FIntPoint>* DebugPoints
     )
 {
     if (! OutSectionRef.HasValidSection())
@@ -798,8 +797,6 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
 
     const FVector2D fOrigin(OX*UnitScale, OY*UnitScale);
 
-    //DebugPoints->Emplace(OX, OY);
-
     TArray<FIntPoint> SortedPoints(
         InPoints.FilterByPredicate([&](const FIntPoint& Point)
         {
@@ -808,11 +805,6 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
                 Point.Y >= OY && Point.Y < OY+DY
                 );
         } ) );
-
-    //if (DebugPoints)
-    //{
-    //    DebugPoints->Append(SortedPoints);
-    //}
 
     // Filter does not return any points, abort
     if (SortedPoints.Num() < 1)
