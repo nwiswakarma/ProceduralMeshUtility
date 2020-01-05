@@ -26,6 +26,7 @@
 // 
 
 #include "Mesh/PMUMeshGridUtility.h"
+#include "ProceduralMeshUtility.h"
 
 void UPMUMeshGridUtility::GenerateLineData(TArray<FVector2D>& Tangents, TArray<float>& Distances, const TArray<FVector2D>& Points, bool bClosedPoly)
 {
@@ -642,4 +643,265 @@ void UPMUMeshGridUtility::GenerateMeshAlongLineUniform(FPMUMeshSection& OutSecti
 
         CurrentDistance += SegmentLength;
     }
+}
+
+void UPMUMeshGridUtility::GenerateGrids(FPMUMeshSectionRef OutSectionRef, const TArray<FIntPoint>& GridOrigins, int32 DimensionX, int32 DimensionY, float UnitScale)
+{
+    if (! OutSectionRef.HasValidSection())
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGrids() ABORTED, INVALID MESH SECTION"));
+        return;
+    }
+    else
+    if (GridOrigins.Num() < 1)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGrids() ABORTED, EMPTY GRID ORIGINS"));
+        return;
+    }
+    else
+    if (DimensionX < 1 || DimensionY < 1)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGrids() ABORTED, INVALID DIMENSION"));
+        return;
+    }
+    else
+    if (UnitScale < KINDA_SMALL_NUMBER)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGrids() ABORTED, INVALID UNIT SCALE"));
+        return;
+    }
+
+    FPMUMeshSection& Section(*OutSectionRef.SectionPtr);
+
+	TArray<FVector>& Positions(Section.Positions);
+	TArray<uint32>& Tangents(Section.Tangents);
+	TArray<FVector2D>& UVs(Section.UVs);
+	TArray<uint32>& Indices(Section.Indices);
+
+    FBox& Bounds(Section.SectionLocalBox);
+
+    int32 BX = DimensionX+1;
+    int32 BY = DimensionY+1;
+    int32 DX = BX-1;
+    int32 DY = BY-1;
+    float fDX = static_cast<float>(DX);
+    float fDY = static_cast<float>(DY);
+
+    int32 VertexOffset = Positions.Num();
+
+    //UE_LOG(LogTemp,Warning, TEXT("VertexOffset: %d"), VertexOffset);
+
+    for (const FIntPoint& Offset : GridOrigins)
+    {
+        FVector2D fOffset(Offset.X*DX*UnitScale, Offset.Y*DY*UnitScale);
+
+		for (int32 y=0; y<BY; ++y)
+        for (int32 x=0; x<BX; ++x)
+        {
+            float fx = fOffset.X + static_cast<float>(x)*UnitScale;
+            float fy = fOffset.Y + static_cast<float>(y)*UnitScale;
+
+            Positions.Emplace(fx, fy, 0);
+            UVs.Emplace(fx/fDX, fy/fDY);
+
+            Bounds += Positions.Last();
+        }
+
+		for (int32 y=0; y<DY; ++y)
+        for (int32 x=0; x<DX; ++x)
+        {
+            int32 idx = VertexOffset + (x + (y * BY));
+
+            Indices.Emplace(idx);
+            Indices.Emplace(idx + BX);
+            Indices.Emplace(idx + 1);
+
+            Indices.Emplace(idx + 1);
+            Indices.Emplace(idx + BX);
+            Indices.Emplace(idx + BX + 1);
+        }
+
+        VertexOffset = Positions.Num();
+    }
+
+    //UE_LOG(LogTemp,Warning, TEXT("GridOrigins.Num(): %d"), GridOrigins.Num());
+    //UE_LOG(LogTemp,Warning, TEXT("Positions.Num(): %d"), Positions.Num());
+    //UE_LOG(LogTemp,Warning, TEXT("Indices.Num(): %d"), Indices.Num());
+    //UE_LOG(LogTemp,Warning, TEXT("Bounds: %s"), *Bounds.ToString());
+}
+
+void UPMUMeshGridUtility::GenerateGridByPoints(
+    FPMUMeshSectionRef OutSectionRef,
+    const TArray<FIntPoint>& InPoints,
+    FIntPoint GridOrigin,
+    int32 DimensionX,
+    int32 DimensionY,
+    float UnitScale,
+    bool bClearSection
+    //TArray<FIntPoint>* DebugPoints
+    )
+{
+    if (! OutSectionRef.HasValidSection())
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGridByPoints() ABORTED, INVALID MESH SECTION"));
+        return;
+    }
+    else
+    if (DimensionX < 2 || DimensionY < 2)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGridByPoints() ABORTED, INVALID DIMENSION"));
+        return;
+    }
+    else
+    if (UnitScale < KINDA_SMALL_NUMBER)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGridByPoints() ABORTED, INVALID UNIT SCALE"));
+        return;
+    }
+
+    FPMUMeshSection& Section(*OutSectionRef.SectionPtr);
+
+	TArray<FVector>& Positions(Section.Positions);
+	TArray<uint32>& Tangents(Section.Tangents);
+	TArray<FVector2D>& UVs(Section.UVs);
+	TArray<uint32>& Indices(Section.Indices);
+    FBox& Bounds(Section.SectionLocalBox);
+
+    // Clear section if required
+    if (bClearSection)
+    {
+        Section.Reset();
+    }
+
+    // No points specified, abort
+    if (InPoints.Num() < 1)
+    {
+        return;
+    }
+
+    const int32 BX = DimensionX+1;
+    const int32 BY = DimensionY+1;
+    const int32 DX = BX-1;
+    const int32 DY = BY-1;
+    const float fDX = static_cast<float>(DX);
+    const float fDY = static_cast<float>(DY);
+
+    const FVector2D NW(0        , 0        );
+    const FVector2D NE(UnitScale, 0        );
+    const FVector2D SW(0        , UnitScale);
+    const FVector2D SE(UnitScale, UnitScale);
+
+    const int32 GridVertexCount = BX*BY;
+
+    const int32 OX = GridOrigin.X*DX;
+    const int32 OY = GridOrigin.Y*DY;
+
+    const FVector2D fOrigin(OX*UnitScale, OY*UnitScale);
+
+    //DebugPoints->Emplace(OX, OY);
+
+    TArray<FIntPoint> SortedPoints(
+        InPoints.FilterByPredicate([&](const FIntPoint& Point)
+        {
+            return (
+                Point.X >= OX && Point.X < OX+DX &&
+                Point.Y >= OY && Point.Y < OY+DY
+                );
+        } ) );
+
+    //if (DebugPoints)
+    //{
+    //    DebugPoints->Append(SortedPoints);
+    //}
+
+    // Filter does not return any points, abort
+    if (SortedPoints.Num() < 1)
+    {
+        return;
+    }
+
+    // Sort points
+    SortedPoints.Sort([](const FIntPoint& P0, const FIntPoint& P1)
+    {
+        return (P0.Y < P1.Y)
+            ? true
+            : ((P0.Y == P1.Y) ? (P0.X < P1.X) : false);
+    } );
+
+    // Vertex index map
+    TArray<uint32> VertexIndices;
+
+    // Invalidate indices
+    VertexIndices.SetNumUninitialized(GridVertexCount);
+	FMemory::Memset(VertexIndices.GetData(), 0xFF, VertexIndices.Num()*VertexIndices.GetTypeSize());
+
+    bool bSkipFirstPoint = false;
+
+    if ((SortedPoints[0].X == OX) && (SortedPoints[0].Y == OY))
+    {
+        uint32 pi[4];
+        pi[0] = VertexIndices[0   ] = Positions.Emplace(fOrigin+NW, 0);
+        pi[1] = VertexIndices[1   ] = Positions.Emplace(fOrigin+NE, 0);
+        pi[2] = VertexIndices[BX  ] = Positions.Emplace(fOrigin+SW, 0);
+        pi[3] = VertexIndices[BX+1] = Positions.Emplace(fOrigin+SE, 0);
+
+        Indices.Emplace(pi[0]); //.Emplace(vi);
+        Indices.Emplace(pi[2]); //.Emplace(vi + BX);
+        Indices.Emplace(pi[1]); //.Emplace(vi + 1);
+
+        Indices.Emplace(pi[1]); //.Emplace(vi + 1);
+        Indices.Emplace(pi[2]); //.Emplace(vi + BX);
+        Indices.Emplace(pi[3]); //.Emplace(vi + BX + 1);
+
+        bSkipFirstPoint = true;
+    }
+
+    for (int32 i=bSkipFirstPoint?1:0; i<SortedPoints.Num(); ++i)
+    {
+        const FIntPoint& Point(SortedPoints[i]);
+        bool bFirstX = (Point.X == OX);
+        bool bFirstY = (Point.Y == OY);
+        int32 Index = (Point.X-OX) + (Point.Y-OY)*BX;
+
+        FVector2D fPoint(Point.X*UnitScale, Point.Y*UnitScale);
+
+        uint32 pi[4];
+
+        if (bFirstY)
+        {
+            pi[0] = VertexIndices[Index   ] = (VertexIndices[Index   ] == ~0U) ? Positions.Emplace(fPoint+NW, 0) : VertexIndices[Index   ];
+            pi[1] = VertexIndices[Index+1 ] =                                    Positions.Emplace(fPoint+NE, 0);
+            pi[2] = VertexIndices[Index+BX] = (VertexIndices[Index+BX] == ~0U) ? Positions.Emplace(fPoint+SW, 0) : VertexIndices[Index+BX];
+        }
+        else
+        if (bFirstX)
+        {
+            pi[0] = VertexIndices[Index   ] = (VertexIndices[Index   ] == ~0U) ? Positions.Emplace(fPoint+NW, 0) : VertexIndices[Index   ];
+            pi[1] = VertexIndices[Index+1 ] = (VertexIndices[Index+1 ] == ~0U) ? Positions.Emplace(fPoint+NE, 0) : VertexIndices[Index+1 ];
+            pi[2] = VertexIndices[Index+BX] =                                    Positions.Emplace(fPoint+SW, 0);
+        }
+        else
+        {
+            pi[0] = VertexIndices[Index   ] = (VertexIndices[Index   ] == ~0U) ? Positions.Emplace(fPoint+NW, 0) : VertexIndices[Index   ];
+            pi[1] = VertexIndices[Index+1 ] = (VertexIndices[Index+1 ] == ~0U) ? Positions.Emplace(fPoint+NE, 0) : VertexIndices[Index+1 ];
+            pi[2] = VertexIndices[Index+BX] = (VertexIndices[Index+BX] == ~0U) ? Positions.Emplace(fPoint+SW, 0) : VertexIndices[Index+BX];
+        }
+
+        pi[3] = VertexIndices[Index+BX+1] = Positions.Emplace(fPoint+SE, 0);
+
+        //UE_LOG(LogTemp,Warning, TEXT("%d %d %d %d"), pi[0], pi[1], pi[2], pi[3]);
+
+        Indices.Emplace(pi[0]); //.Emplace(vi);
+        Indices.Emplace(pi[2]); //.Emplace(vi + BX);
+        Indices.Emplace(pi[1]); //.Emplace(vi + 1);
+
+        Indices.Emplace(pi[1]); //.Emplace(vi + 1);
+        Indices.Emplace(pi[2]); //.Emplace(vi + BX);
+        Indices.Emplace(pi[3]); //.Emplace(vi + BX + 1);
+    }
+
+    Bounds += FVector(fOrigin, 0.f);
+    Bounds += FVector(fOrigin.X+DX*UnitScale, fOrigin.Y+DY*UnitScale, 0.f);
+
+    //UE_LOG(LogTemp,Warning, TEXT("Bounds: %s"), *Bounds.ToString());
 }

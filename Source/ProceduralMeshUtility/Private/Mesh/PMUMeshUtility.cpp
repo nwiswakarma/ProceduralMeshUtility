@@ -247,6 +247,83 @@ public:
 IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS<0>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS.usf"), TEXT("ApplyHeightMap"), SF_Compute);
 IMPLEMENT_SHADER_TYPE(template<>, TPMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS<1>, TEXT("/Plugin/ProceduralMeshUtility/Private/PMUMeshUtilityApplySeamlessTiledHeightMapToMeshSectionCS.usf"), TEXT("ApplyHeightMap"), SF_Compute);
 
+/////////////////////////////////////////////////////////////////////////////
+
+bool UPMUMeshUtility::IsValidSectionData(const UStaticMesh* Mesh, int32 LODIndex, int32 SectionIndex)
+{
+    const int32 L = LODIndex;
+    const int32 S = SectionIndex;
+    return
+        Mesh &&
+        Mesh->bAllowCPUAccess &&
+        Mesh->RenderData &&
+        Mesh->RenderData->LODResources.IsValidIndex(L) && 
+        Mesh->RenderData->LODResources[L].Sections.IsValidIndex(S);
+}
+
+const FStaticMeshVertexBuffers& UPMUMeshUtility::GetVertexBuffers(const UStaticMesh& Mesh, int32 LODIndex)
+{
+    return Mesh.RenderData->LODResources[LODIndex].VertexBuffers;
+}
+
+const FStaticMeshSection& UPMUMeshUtility::GetSection(const UStaticMesh& Mesh, int32 LODIndex, int32 SectionIndex)
+{
+    return Mesh.RenderData->LODResources[LODIndex].Sections[SectionIndex];
+}
+
+FIndexArrayView UPMUMeshUtility::GetIndexBuffer(const UStaticMesh& Mesh, int32 LODIndex)
+{
+    return Mesh.RenderData->LODResources[LODIndex].IndexBuffer.GetArrayView();
+}
+
+void UPMUMeshUtility::GatherBoundaryEdges(TArray<FPMUEdge>& OutEdges, const TArray<FPMUEdge>& InEdges, const int32 VertexCount)
+{
+    if (InEdges.Num() < 2)
+    {
+        return;
+    }
+
+    TArray<FPMUEdge> Edges(InEdges);
+
+    Edges.Sort(
+        [](const FPMUEdge& lhs, const FPMUEdge& rhs)
+        {
+            return lhs.IndexPacked < rhs.IndexPacked;
+        } );
+
+    TArray<FPMUEdge> FilteredEdges;
+
+    FilteredEdges.Reserve(Edges.Num());
+
+    FPMUEdge prev = Edges[0];
+    FPMUEdge curr;
+
+    for (int32 count=1, idx=1; idx<Edges.Num(); idx++)
+    {
+        curr = Edges[idx];
+
+        if (curr.IndexPacked != prev.IndexPacked)
+        {
+            if (count == 1)
+            {
+                FilteredEdges.Emplace(prev);
+            }
+
+            count = 1;
+        }
+        else
+        {
+            count++;
+        }
+
+        prev = curr;
+    }
+
+    FilteredEdges.Shrink();
+
+    OutEdges = MoveTemp(FilteredEdges);
+}
+
 void UPMUMeshUtility::ExpandSectionBoundsMulti(
     UPMUMeshComponent* MeshComponent,
     const TArray<int32>& SectionIndices,

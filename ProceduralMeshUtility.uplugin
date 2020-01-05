@@ -14,6 +14,11 @@
 			"Name" : "ProceduralMeshUtility",
 			"Type" : "Runtime",
             "LoadingPhase": "PostConfigInit"
+		},
+		{
+			"Name" : "ProceduralMeshUtilityEditor",
+			"Type" : "Editor",
+			"LoadingPhase" : "Default"
 		}
 	],
 	"Plugins":

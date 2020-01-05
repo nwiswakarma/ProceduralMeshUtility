@@ -114,6 +114,10 @@ public:
 	void K2_CreateSectionFromRef(int32 SectionIndex, const FPMUMeshSectionRef& Section) { CreateSection(SectionIndex, Section); }
 	void CreateSection(int32 SectionIndex, const FPMUMeshSectionRef& Section);
 
+	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh", meta=(DisplayName="Create Section From Shared Section Reference"))
+	void K2_CreateSectionFromSharedRef(int32 SectionIndex, const FPMUMeshSectionSharedRef& Section) { CreateSection(SectionIndex, Section); }
+	void CreateSection(int32 SectionIndex, const FPMUMeshSectionSharedRef& Section);
+
 	/**
 	 *	Create/replace a section for this procedural mesh component.
 	 *	@param	SectionIndex		Index of the section to create or replace.
@@ -182,6 +186,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
 	void GetAllNonEmptySectionIndices(TArray<int32>& SectionIndices);
+
+	UFUNCTION(BlueprintCallable, Category="Components|PMU Mesh")
+	void GetSectionGeometry(TArray<FVector>& OutPositions, TArray<int32>& OutIndices, int32 SectionIndex);
 
 	/** Add simple collision convex to this component */
 	UFUNCTION(BlueprintCallable, Category = "Components|PMU Mesh")

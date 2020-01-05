@@ -75,7 +75,7 @@ void UPMUPrefabBuilder::GetPrefabGeometryCount(uint32& OutNumVertices, uint32& O
     OutNumIndices = Section.NumTriangles * 3;
 }
 
-bool UPMUPrefabBuilder::IsValidPrefab(const UStaticMesh* Mesh, int32 LODIndex, int32 SectionIndex) const
+bool UPMUPrefabBuilder::IsValidPrefab(const UStaticMesh* Mesh, int32 LODIndex, int32 SectionIndex)
 {
     const int32 L = LODIndex;
     const int32 S = SectionIndex;
@@ -247,6 +247,8 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
 
     Decorator->OnAllocateSections();
 
+    //UE_LOG(LogTemp,Warning, TEXT("GeneratedSections.Num(): %d"), GeneratedSections.Num());
+
     struct FSectionAllocation
     {
         uint32 NumVertices;
@@ -286,6 +288,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
 
     {
         int32 LastOccupiedPointIndex = 0;
+        uint32 LastPrefabIndex = ~0U;
         float OccupiedDistance = 0.f;
 
         static const float PREFAB_MINIMUM_SCALE = .4f;
@@ -297,10 +300,12 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             uint32 PrefabIndex = 0;
             float RemainingDistance = OccupiedDistance-EndDistance;
 
-            // Find prefab to occupy along line, look from the longest
+            // Find prefab to occupy along line, find from the longest
             for (int32 pi=(PrefabCount-1); pi>=0; --pi)
             {
-                const FPrefabData& Prefab(GetSortedPrefab(pi));
+                uint32 CandidateIndex = Decorator->GetPrefabCandidate(pi, LastPrefabIndex);
+
+                const FPrefabData& Prefab(GetSortedPrefab(CandidateIndex));
                 const float PrefabLength = Prefab.Length;
 
                 // Make sure to not go past remaining line distance
@@ -333,7 +338,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
                     // Matching prefab found, break
                     if (bValidPrefab)
                     {
-                        PrefabIndex = pi;
+                        PrefabIndex = CandidateIndex;
                         break;
                     }
                 }
@@ -343,6 +348,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             const float PrefabLength = Prefab.Length;
             float Scale = 1.f;
 
+            LastPrefabIndex = PrefabIndex;
             OccupiedDistance += PrefabLength;
 
             // Find last occupied index
@@ -435,6 +441,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
         const TArray<FVector>& SrcPositions(PrefabBuffers.Positions);
         const TArray<FVector>& SrcTangentX(PrefabBuffers.TangentX);
         const TArray<FVector4>& SrcTangentZ(PrefabBuffers.TangentZ);
+        const TArray<FColor>& SrcColors(PrefabBuffers.Colors);
         const TArray<uint32>& IndexAlongX(Prefab.SortedIndexAlongX);
 
         TArray<FVector>& DstPositions(Section.Positions);
@@ -449,6 +456,7 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             const FVector SrcPos(SrcPositions[SrcIndex]);
             const FVector SrcTanX(SrcTangentX[SrcIndex]);
             const FVector4 SrcTanZ(SrcTangentZ[SrcIndex]);
+            const FColor SrcColor(SrcColors[SrcIndex]);
 
             CurrentDistance = StartDistance+SrcPos.X*PrefabScaleX;
 
@@ -503,6 +511,8 @@ void UPMUPrefabBuilder::BuildPrefabsAlongPoly(const TArray<FVector2D>& Positions
             FVector TransformedTangent(SrcTanX);
             FVector4 TransformedNormal(SrcTanZ);
 
+            //if (SrcColor.G < 127)
+            if (SrcColor.B < 127)
             {
                 float Angle = FMath::Acos(InterpTangent.X);
 

@@ -168,6 +168,92 @@ class PROCEDURALMESHUTILITY_API UPMUMeshUtility : public UBlueprintFunctionLibra
 
 public:
 
+    static bool IsValidSectionData(const UStaticMesh* Mesh, int32 LODIndex, int32 SectionIndex);
+    FORCEINLINE static bool IsValidSectionData(const FPMUStaticMeshSectionData& Input);
+
+    static const FStaticMeshVertexBuffers& GetVertexBuffers(const UStaticMesh& Mesh, int32 LODIndex);
+    static const FStaticMeshSection& GetSection(const UStaticMesh& Mesh, int32 LODIndex, int32 SectionIndex);
+    static FIndexArrayView GetIndexBuffer(const UStaticMesh& Mesh, int32 LODIndex);
+
+    FORCEINLINE static const FStaticMeshVertexBuffers& GetVertexBuffers(const FPMUStaticMeshSectionData& Input);
+    FORCEINLINE static const FStaticMeshSection& GetSection(const FPMUStaticMeshSectionData& Input);
+    FORCEINLINE static FIndexArrayView GetIndexBuffer(const FPMUStaticMeshSectionData& Input);
+
+    template<typename IndexArrayType>
+    static void GenerateEdges(TArray<FPMUEdge>& OutEdges, const IndexArrayType& Triangles)
+    {
+        OutEdges.Reset(Triangles.Num()*3);
+
+        for (int32 i=0; i<Triangles.Num(); i+=3)
+        {
+            const uint32 vi0 = Triangles[i  ];
+            const uint32 vi1 = Triangles[i+1];
+            const uint32 vi2 = Triangles[i+2];
+
+            OutEdges.Emplace(FMath::Min(vi0, vi1), FMath::Max(vi0, vi1));
+            OutEdges.Emplace(FMath::Min(vi0, vi2), FMath::Max(vi0, vi2));
+            OutEdges.Emplace(FMath::Min(vi1, vi2), FMath::Max(vi1, vi2));
+        }
+    }
+
+    template<typename IndexArrayType>
+    static void GenerateBoundaryEdges(TArray<FPMUEdge>& OutEdges, const IndexArrayType& Triangles)
+    {
+        TMap<uint64, int32> EdgeMap;
+
+        EdgeMap.Reserve(Triangles.Num()*3);
+
+        for (int32 i=0; i<Triangles.Num(); i+=3)
+        {
+            const uint32 vi0 = Triangles[i  ];
+            const uint32 vi1 = Triangles[i+1];
+            const uint32 vi2 = Triangles[i+2];
+
+            FPMUEdge E0(FMath::Min(vi0, vi1), FMath::Max(vi0, vi1));
+            FPMUEdge E1(FMath::Min(vi0, vi2), FMath::Max(vi0, vi2));
+            FPMUEdge E2(FMath::Min(vi1, vi2), FMath::Max(vi1, vi2));
+
+            if (int32* Count0 = EdgeMap.Find(E0.IndexPacked))
+            {
+                ++(*Count0);
+            }
+            else
+            {
+                EdgeMap.Emplace(E0.IndexPacked, 1);
+            }
+
+            if (int32* Count1 = EdgeMap.Find(E1.IndexPacked))
+            {
+                ++(*Count1);
+            }
+            else
+            {
+                EdgeMap.Emplace(E1.IndexPacked, 1);
+            }
+
+            if (int32* Count2 = EdgeMap.Find(E2.IndexPacked))
+            {
+                ++(*Count2);
+            }
+            else
+            {
+                EdgeMap.Emplace(E2.IndexPacked, 1);
+            }
+        }
+
+        OutEdges.Reset(EdgeMap.Num());
+
+        for (const auto& EdgeData : EdgeMap)
+        {
+            if (EdgeData.Get<1>() == 1)
+            {
+                OutEdges.Emplace(EdgeData.Get<0>());
+            }
+        }
+    }
+
+    static void GatherBoundaryEdges(TArray<FPMUEdge>& OutEdges, const TArray<FPMUEdge>& InEdges, const int32 VertexCount);
+
     UFUNCTION(BlueprintCallable, meta=(AutoCreateRefTerm="NegativeExpand,PositiveExpand"))
     static void ExpandSectionBoundsMulti(
         UPMUMeshComponent* MeshComponent,
@@ -237,3 +323,23 @@ public:
         const FPMUMeshApplyHeightParameters& ShaderParameters
         );
 };
+
+FORCEINLINE bool UPMUMeshUtility::IsValidSectionData(const FPMUStaticMeshSectionData& Input)
+{
+    return IsValidSectionData(Input.Mesh, Input.LODIndex, Input.SectionIndex);
+}
+
+FORCEINLINE const FStaticMeshVertexBuffers& UPMUMeshUtility::GetVertexBuffers(const FPMUStaticMeshSectionData& Input)
+{
+    return GetVertexBuffers(*Input.Mesh, Input.LODIndex);
+}
+
+FORCEINLINE const FStaticMeshSection& UPMUMeshUtility::GetSection(const FPMUStaticMeshSectionData& Input)
+{
+    return GetSection(*Input.Mesh, Input.LODIndex, Input.SectionIndex);
+}
+
+FORCEINLINE FIndexArrayView UPMUMeshUtility::GetIndexBuffer(const FPMUStaticMeshSectionData& Input)
+{
+    return GetIndexBuffer(*Input.Mesh, Input.LODIndex);
+}

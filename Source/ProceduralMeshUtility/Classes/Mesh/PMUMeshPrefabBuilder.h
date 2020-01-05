@@ -34,6 +34,21 @@
 class UPMUPrefabBuilder;
 
 USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUPrefabMeshData
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mesh")
+    UStaticMesh* Mesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mesh")
+    int32 LODIndex = 0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mesh")
+    int32 SectionIndex = 0;
+};
+
+USTRUCT(BlueprintType)
 struct PROCEDURALMESHUTILITY_API FPMUPrefabInputData
 {
     GENERATED_BODY()
@@ -129,9 +144,9 @@ public:
         return DEFAULT_INDEX;
     }
 
-    FORCEINLINE_DEBUGGABLE virtual int32 GetPrefabIndex()
+    FORCEINLINE_DEBUGGABLE virtual uint32 GetPrefabCandidate(uint32 PrefabIndex, uint32 PreviousIndex) const
     {
-        return DEFAULT_INDEX;
+        return PrefabIndex;
     }
 
     FORCEINLINE_DEBUGGABLE virtual void OnCopyPrefabToSection(FPMUMeshSection& Section, const FPMUPrefabGenerationData& Prefab, uint32 VertexOffsetIndex)
@@ -216,14 +231,19 @@ public:
 
     UPMUPrefabBuilder();
 
-    bool IsValidPrefab(const UStaticMesh* Mesh, int32 LODIndex, int32 SectionIndex) const;
+    static bool IsValidPrefab(const UStaticMesh* Mesh, int32 LODIndex, int32 SectionIndex);
 
-    FORCEINLINE bool IsValidPrefab(const FPMUPrefabInputData& Input) const
+    FORCEINLINE static bool IsValidPrefab(const FPMUPrefabMeshData& Input)
     {
         return IsValidPrefab(Input.Mesh, Input.LODIndex, Input.SectionIndex);
     }
 
-    FORCEINLINE bool IsValidPrefab(const FPrefabData& Prefab) const
+    FORCEINLINE static bool IsValidPrefab(const FPMUPrefabInputData& Input)
+    {
+        return IsValidPrefab(Input.Mesh, Input.LODIndex, Input.SectionIndex);
+    }
+
+    FORCEINLINE static bool IsValidPrefab(const FPrefabData& Prefab)
     {
         return IsValidPrefab(Prefab.Mesh, Prefab.LODIndex, Prefab.SectionIndex);
     }

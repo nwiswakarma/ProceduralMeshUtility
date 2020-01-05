@@ -260,6 +260,23 @@ void UPMUMeshComponent::GetAllNonEmptySectionIndices(TArray<int32>& SectionIndic
     }
 }
 
+void UPMUMeshComponent::GetSectionGeometry(TArray<FVector>& OutPositions, TArray<int32>& OutIndices, int32 SectionIndex)
+{
+    if (! Sections.IsValidIndex(SectionIndex))
+    {
+        return;
+    }
+
+    const FPMUMeshSection& Section(Sections[SectionIndex]);
+	const TArray<FVector>& Positions(Section.Positions);
+	const TArray<uint32>& Indices(Section.Indices);
+
+    OutPositions = Positions;
+
+    OutIndices.SetNumUninitialized(Indices.Num());
+    FMemory::Memcpy(OutIndices.GetData(), Indices.GetData(), Indices.Num()*Indices.GetTypeSize());
+}
+
 FPMUMeshSceneProxy* UPMUMeshComponent::GetSceneProxy()
 {
     return (FPMUMeshSceneProxy*) SceneProxy;
@@ -369,6 +386,14 @@ void UPMUMeshComponent::CreateSection(int32 SectionIndex, const FPMUMeshSectionR
     DstSection.bEnableFastUVCopy = SrcSection.bEnableFastUVCopy;
     DstSection.bEnableFastTangentsCopy = SrcSection.bEnableFastTangentsCopy;
     DstSection.bInitializeInvalidVertexData = SrcSection.bInitializeInvalidVertexData;
+}
+
+void UPMUMeshComponent::CreateSection(int32 SectionIndex, const FPMUMeshSectionSharedRef& Section)
+{
+    if (Section.HasValidSection())
+    {
+        CreateSection(SectionIndex, FPMUMeshSectionRef(*Section.Section));
+    }
 }
 
 void UPMUMeshComponent::CreateMeshSection_LinearColor(

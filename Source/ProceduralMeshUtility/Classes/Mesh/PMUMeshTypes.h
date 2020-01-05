@@ -41,6 +41,54 @@ struct PROCEDURALMESHUTILITY_API FPMUPackedVertex
     FColor Color;
 };
 
+union FPMUEdge
+{
+    FPMUEdge() = default;
+
+    FPMUEdge(uint64 InIndexPacked)
+        : IndexPacked(InIndexPacked)
+    {
+    }
+
+    FPMUEdge(uint32 InMinIndex, uint32 InMaxIndex)
+        : MinIndex(InMinIndex)
+        , MaxIndex(InMaxIndex)
+    {
+    }
+
+    uint64 IndexPacked;
+    struct { uint32 MinIndex, MaxIndex; };
+};
+
+template <> struct TIsPODType<FPMUEdge> { enum { Value = true }; };
+
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUEdgeVertexPair
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FVector Point0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FVector Point1;
+};
+
+USTRUCT(BlueprintType)
+struct PROCEDURALMESHUTILITY_API FPMUStaticMeshSectionData
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UStaticMesh* Mesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 LODIndex = 0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    int32 SectionIndex = 0;
+};
+
 USTRUCT(BlueprintType)
 struct PROCEDURALMESHUTILITY_API FPMUMeshSection
 {
