@@ -680,10 +680,10 @@ void UPMUMeshGridUtility::GenerateGrids(FPMUMeshSectionRef OutSectionRef, const 
 
     FBox& Bounds(Section.SectionLocalBox);
 
-    int32 BX = DimensionX+1;
-    int32 BY = DimensionY+1;
-    int32 DX = BX-1;
-    int32 DY = BY-1;
+    int32 DX = DimensionX;
+    int32 DY = DimensionY;
+    int32 BX = DX+1;
+    int32 BY = DY+1;
     float fDX = static_cast<float>(DX);
     float fDY = static_cast<float>(DY);
 
@@ -703,14 +703,15 @@ void UPMUMeshGridUtility::GenerateGrids(FPMUMeshSectionRef OutSectionRef, const 
 
             Positions.Emplace(fx, fy, 0);
             UVs.Emplace(fx/fDX, fy/fDY);
-
-            Bounds += Positions.Last();
         }
+
+        Bounds += Positions[VertexOffset];
+        Bounds += Positions.Last();
 
 		for (int32 y=0; y<DY; ++y)
         for (int32 x=0; x<DX; ++x)
         {
-            int32 idx = VertexOffset + (x + (y * BY));
+            int32 idx = VertexOffset + (x + (y * BX));
 
             Indices.Emplace(idx);
             Indices.Emplace(idx + BX);
@@ -734,6 +735,7 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
     FPMUMeshSectionRef OutSectionRef,
     const TArray<FIntPoint>& InPoints,
     FIntPoint GridOrigin,
+    FIntPoint GridOffset,
     int32 DimensionX,
     int32 DimensionY,
     float UnitScale,
@@ -778,10 +780,10 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
         return;
     }
 
-    const int32 BX = DimensionX+1;
-    const int32 BY = DimensionY+1;
-    const int32 DX = BX-1;
-    const int32 DY = BY-1;
+    const int32 DX = DimensionX;
+    const int32 DY = DimensionY;
+    const int32 BX = DX+1;
+    const int32 BY = DY+1;
     const float fDX = static_cast<float>(DX);
     const float fDY = static_cast<float>(DY);
 
@@ -795,7 +797,10 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
     const int32 OX = GridOrigin.X*DX;
     const int32 OY = GridOrigin.Y*DY;
 
-    const FVector2D fOrigin(OX*UnitScale, OY*UnitScale);
+    const int32 FX = GridOffset.X*DX;
+    const int32 FY = GridOffset.Y*DY;
+
+    const FVector2D fOrigin((FX+OX)*UnitScale, (FY+OY)*UnitScale);
 
     TArray<FIntPoint> SortedPoints(
         InPoints.FilterByPredicate([&](const FIntPoint& Point)
@@ -855,7 +860,7 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
         bool bFirstY = (Point.Y == OY);
         int32 Index = (Point.X-OX) + (Point.Y-OY)*BX;
 
-        FVector2D fPoint(Point.X*UnitScale, Point.Y*UnitScale);
+        FVector2D fPoint((FX+Point.X)*UnitScale, (FY+Point.Y)*UnitScale);
 
         uint32 pi[4];
 
@@ -896,4 +901,203 @@ void UPMUMeshGridUtility::GenerateGridByPoints(
     Bounds += FVector(fOrigin.X+DX*UnitScale, fOrigin.Y+DY*UnitScale, 0.f);
 
     //UE_LOG(LogTemp,Warning, TEXT("Bounds: %s"), *Bounds.ToString());
+}
+
+void UPMUMeshGridUtility::GenerateGridVertices(
+    TArray<FVector>& OutPositions,
+    const FIntPoint& GridOrigin,
+    int32 DimensionX,
+    int32 DimensionY,
+    float UnitScale,
+    float ZOffset,
+    TFunction<void(int32, int32, int32)> GenerateVertexCallback
+    )
+{
+    if (DimensionX < 1 || DimensionY < 1)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGrids() ABORTED, INVALID DIMENSION"));
+        return;
+    }
+    else
+    if (UnitScale < KINDA_SMALL_NUMBER)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGrids() ABORTED, INVALID UNIT SCALE"));
+        return;
+    }
+
+    int32 DX = DimensionX;
+    int32 DY = DimensionY;
+    int32 BX = DX+1;
+    int32 BY = DY+1;
+    float fDX = static_cast<float>(DX);
+    float fDY = static_cast<float>(DY);
+    FVector2D fOffset(GridOrigin.X*DX*UnitScale, GridOrigin.Y*DY*UnitScale);
+
+    int32 VertexOffset = OutPositions.Num();
+    int32 GridVertexCount = BX*BY;
+
+    OutPositions.AddUninitialized(GridVertexCount);
+
+    for (int32 y=0, i=VertexOffset; y<BY; ++y)
+    for (int32 x=0                ; x<BX; ++x, ++i)
+    {
+        float fx = fOffset.X + static_cast<float>(x)*UnitScale;
+        float fy = fOffset.Y + static_cast<float>(y)*UnitScale;
+
+        OutPositions[i] = FVector(fx, fy, ZOffset);
+
+        if (GenerateVertexCallback)
+        {
+            GenerateVertexCallback(x, y, i);
+        }
+    }
+}
+
+void UPMUMeshGridUtility::GenerateGridGeometryByPoints(
+    TArray<FVector>& OutPositions,
+    TArray<uint32>& OutIndices,
+    const TArray<FIntPoint>& InPoints,
+    FIntPoint GridOrigin,
+    FIntPoint GridOffset,
+    int32 DimensionX,
+    int32 DimensionY,
+    float UnitScale,
+    float ZOffset,
+    bool bRequireSorting,
+    TFunction<void(int32, int32, int32)> GenerateVertexCallback
+    )
+{
+    if (DimensionX < 2 || DimensionY < 2)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGridByPoints() ABORTED, INVALID DIMENSION"));
+        return;
+    }
+    else
+    if (UnitScale < KINDA_SMALL_NUMBER)
+    {
+        UE_LOG(LogPMU,Warning, TEXT("UPMUMeshGridUtility::GenerateGridByPoints() ABORTED, INVALID UNIT SCALE"));
+        return;
+    }
+
+    // No points specified, abort
+    if (InPoints.Num() < 1)
+    {
+        return;
+    }
+
+    const int32 DX = DimensionX;
+    const int32 DY = DimensionY;
+    const int32 BX = DX+1;
+    const int32 BY = DY+1;
+    const float fDX = static_cast<float>(DX);
+    const float fDY = static_cast<float>(DY);
+
+    const FVector2D NW(0        , 0        );
+    const FVector2D NE(UnitScale, 0        );
+    const FVector2D SW(0        , UnitScale);
+    const FVector2D SE(UnitScale, UnitScale);
+
+    const int32 OX = GridOrigin.X*DX;
+    const int32 OY = GridOrigin.Y*DY;
+
+    const int32 FX = GridOffset.X*DX;
+    const int32 FY = GridOffset.Y*DY;
+
+    const int32 GridVertexCount = BX*BY;
+
+    const TArray<FIntPoint>* SortedPointsPtr;
+    TArray<FIntPoint> SortedPointsTmp;
+
+    // Sort input points if required
+    if (bRequireSorting)
+    {
+        // Filter out-of-bounds points
+        SortedPointsTmp = InPoints.FilterByPredicate(
+        [&](const FIntPoint& Point)
+        {
+            return (
+                Point.X >= OX && Point.X < OX+DX &&
+                Point.Y >= OY && Point.Y < OY+DY
+                );
+        } );
+
+        // Sort points
+        SortedPointsTmp.Sort([](const FIntPoint& P0, const FIntPoint& P1)
+        {
+            return (P0.Y < P1.Y)
+                ? true
+                : ((P0.Y == P1.Y) ? (P0.X < P1.X) : false);
+        } );
+
+        SortedPointsPtr = &SortedPointsTmp;
+    }
+    else
+    {
+        SortedPointsPtr = &InPoints;
+    }
+
+    const TArray<FIntPoint>& SortedPoints(*SortedPointsPtr);
+
+    // Filtered and sorted points does not return any points, abort
+    if (SortedPoints.Num() < 1)
+    {
+        return;
+    }
+
+    // Vertex index map
+    TArray<uint32> VertexIndices;
+
+    // Invalidate indices
+    VertexIndices.SetNumUninitialized(GridVertexCount);
+	FMemory::Memset(VertexIndices.GetData(), 0xFF, VertexIndices.Num()*VertexIndices.GetTypeSize());
+
+    // Reserve geometry container
+    OutPositions.Reserve(OutPositions.Num()+GridVertexCount);
+    OutIndices.Reserve(OutIndices.Num()+DX*DY*6);
+
+    // Create add vertex callback
+    TFunctionRef<uint32(int32, int32, FVector)> AddVertex(
+    [BX, &VertexIndices, &OutPositions, &GenerateVertexCallback](int32 X, int32 Y, FVector Position)
+    {
+        const int32 i = X + Y*BX;
+
+        if (VertexIndices[i] == ~0U)
+        {
+            VertexIndices[i] = OutPositions.Emplace(Position);
+
+            if (GenerateVertexCallback)
+            {
+                GenerateVertexCallback(X, Y, i);
+            }
+        }
+
+        return VertexIndices[i];
+    } );
+
+    // Generate grid geometry
+    for (int32 i=0; i<SortedPoints.Num(); ++i)
+    {
+        const FIntPoint& Point(SortedPoints[i]);
+        int32 PX = Point.X;
+        int32 PY = Point.Y;
+        FVector2D fPoint((FX+PX)*UnitScale, (FY+PY)*UnitScale);
+
+        uint32 pi[4];
+        pi[0] = AddVertex(PX  , PY  , FVector(fPoint+NW, ZOffset));
+        pi[1] = AddVertex(PX+1, PY  , FVector(fPoint+NE, ZOffset));
+        pi[2] = AddVertex(PX  , PY+1, FVector(fPoint+SW, ZOffset));
+        pi[3] = AddVertex(PX+1, PY+1, FVector(fPoint+SE, ZOffset));
+
+        OutIndices.Emplace(pi[0]);
+        OutIndices.Emplace(pi[2]);
+        OutIndices.Emplace(pi[1]);
+
+        OutIndices.Emplace(pi[1]);
+        OutIndices.Emplace(pi[2]);
+        OutIndices.Emplace(pi[3]);
+    }
+
+    // Shrink geometry container
+    OutPositions.Shrink();
+    OutIndices.Shrink();
 }

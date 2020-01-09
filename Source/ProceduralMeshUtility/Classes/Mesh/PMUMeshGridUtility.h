@@ -55,6 +55,7 @@ public:
         FPMUMeshSectionRef OutSectionRef,
         const TArray<FIntPoint>& InPoints,
         FIntPoint GridOrigin,
+        FIntPoint GridOffset,
         int32 DimensionX = 10,
         int32 DimensionY = 10,
         float UnitScale = 10.f,
@@ -70,10 +71,45 @@ public:
         FPMUMeshSectionRef OutSectionRef,
         const TArray<FIntPoint>& InPoints,
         FIntPoint GridOrigin,
+        FIntPoint GridOffset,
         int32 DimensionX = 10,
         int32 DimensionY = 10,
         float UnitScale = 10.f,
         bool bClearSection = false
+        );
+
+    static void GenerateGridByPoints(
+        FPMUMeshSectionRef OutSectionRef,
+        const TArray<FIntPoint>& InPoints,
+        FIntPoint GridOrigin,
+        int32 DimensionX = 10,
+        int32 DimensionY = 10,
+        float UnitScale = 10.f,
+        bool bClearSection = false
+        );
+
+    static void GenerateGridVertices(
+        TArray<FVector>& OutPositions,
+        const FIntPoint& GridOrigin,
+        int32 DimensionX = 10,
+        int32 DimensionY = 10,
+        float UnitScale = 10.f,
+        float ZOffset = 0.f,
+        TFunction<void(int32, int32, int32)> GenerateVertexCallback = nullptr
+        );
+
+    static void GenerateGridGeometryByPoints(
+        TArray<FVector>& OutPositions,
+        TArray<uint32>& OutIndices,
+        const TArray<FIntPoint>& InPoints,
+        FIntPoint GridOrigin,
+        FIntPoint GridOffset,
+        int32 DimensionX = 10,
+        int32 DimensionY = 10,
+        float UnitScale = 10.f,
+        float ZOffset = 0.f,
+        bool bRequireSorting = false,
+        TFunction<void(int32, int32, int32)> GenerateVertexCallback = nullptr
         );
 };
 
@@ -93,7 +129,7 @@ FORCEINLINE_DEBUGGABLE void UPMUMeshGridUtility::ConvertQuadToTriangles(TArray<i
     Indices.Emplace(Vert3);
 }
 
-FORCEINLINE_DEBUGGABLE void UPMUMeshGridUtility::K2_GenerateGridByPoints(
+FORCEINLINE_DEBUGGABLE void UPMUMeshGridUtility::GenerateGridByPoints(
     FPMUMeshSectionRef OutSectionRef,
     const TArray<FIntPoint>& InPoints,
     FIntPoint GridOrigin,
@@ -107,6 +143,30 @@ FORCEINLINE_DEBUGGABLE void UPMUMeshGridUtility::K2_GenerateGridByPoints(
         OutSectionRef,
         InPoints,
         GridOrigin,
+        FIntPoint::ZeroValue,
+        DimensionX,
+        DimensionY,
+        UnitScale,
+        bClearSection
+        );
+}
+
+FORCEINLINE_DEBUGGABLE void UPMUMeshGridUtility::K2_GenerateGridByPoints(
+    FPMUMeshSectionRef OutSectionRef,
+    const TArray<FIntPoint>& InPoints,
+    FIntPoint GridOrigin,
+    FIntPoint GridOffset,
+    int32 DimensionX,
+    int32 DimensionY,
+    float UnitScale,
+    bool bClearSection
+    )
+{
+    GenerateGridByPoints(
+        OutSectionRef,
+        InPoints,
+        GridOrigin,
+        GridOffset,
         DimensionX,
         DimensionY,
         UnitScale,
