@@ -1067,7 +1067,7 @@ void UPMUMeshGridUtility::GenerateGridGeometryByPoints(
 
             if (GenerateVertexCallback)
             {
-                GenerateVertexCallback(X, Y, i);
+                GenerateVertexCallback(X, Y, VertexIndices[i]);
             }
         }
 
