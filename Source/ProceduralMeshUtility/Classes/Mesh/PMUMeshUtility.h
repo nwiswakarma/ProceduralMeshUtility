@@ -179,8 +179,8 @@ public:
     FORCEINLINE static const FStaticMeshSection& GetSection(const FPMUStaticMeshSectionData& Input);
     FORCEINLINE static FIndexArrayView GetIndexBuffer(const FPMUStaticMeshSectionData& Input);
 
-    template<typename IndexArrayType>
-    static void GenerateEdges(TArray<FPMUEdge>& OutEdges, const IndexArrayType& Triangles)
+    template<typename FIndexArrayType>
+    static void GenerateEdges(TArray<FPMUEdge>& OutEdges, const FIndexArrayType& Triangles)
     {
         OutEdges.Reset(Triangles.Num()*3);
 
@@ -196,13 +196,14 @@ public:
         }
     }
 
-    template<typename IndexArrayType>
-    static void GenerateBoundaryEdges(TArray<FPMUEdge>& OutEdges, const IndexArrayType& Triangles)
+    template<typename FIndexArrayType>
+    static void GatherEdges(TArray<FPMUEdge>& OutEdges, const FIndexArrayType& Triangles)
     {
         TMap<uint64, int32> EdgeMap;
 
         EdgeMap.Reserve(Triangles.Num()*3);
 
+        // Generate edge usage map
         for (int32 i=0; i<Triangles.Num(); i+=3)
         {
             const uint32 vi0 = Triangles[i  ];
@@ -212,6 +213,8 @@ public:
             FPMUEdge E0(FMath::Min(vi0, vi1), FMath::Max(vi0, vi1));
             FPMUEdge E1(FMath::Min(vi0, vi2), FMath::Max(vi0, vi2));
             FPMUEdge E2(FMath::Min(vi1, vi2), FMath::Max(vi1, vi2));
+
+            // Map edge usage count
 
             if (int32* Count0 = EdgeMap.Find(E0.IndexPacked))
             {
@@ -241,6 +244,8 @@ public:
             }
         }
 
+        // Add edges with 1 use count as output
+
         OutEdges.Reset(EdgeMap.Num());
 
         for (const auto& EdgeData : EdgeMap)
@@ -252,7 +257,14 @@ public:
         }
     }
 
-    static void GatherBoundaryEdges(TArray<FPMUEdge>& OutEdges, const TArray<FPMUEdge>& InEdges, const int32 VertexCount);
+    static void GenerateSortedEdgeGroups(
+        TArray<uint32>& OutIndices,
+        TArray<int32>& OutCounts,
+        const TArray<FPMUEdge>& InEdges,
+        bool bOpenPolygon = true
+        );
+
+    static void GatherBoundaryEdges(TArray<FPMUEdge>& OutEdges, const TArray<FPMUEdge>& InEdges);
 
     UFUNCTION(BlueprintCallable, meta=(AutoCreateRefTerm="NegativeExpand,PositiveExpand"))
     static void ExpandSectionBoundsMulti(

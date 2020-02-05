@@ -276,7 +276,120 @@ FIndexArrayView UPMUMeshUtility::GetIndexBuffer(const UStaticMesh& Mesh, int32 L
     return Mesh.RenderData->LODResources[LODIndex].IndexBuffer.GetArrayView();
 }
 
-void UPMUMeshUtility::GatherBoundaryEdges(TArray<FPMUEdge>& OutEdges, const TArray<FPMUEdge>& InEdges, const int32 VertexCount)
+void UPMUMeshUtility::GenerateSortedEdgeGroups(
+    TArray<uint32>& OutIndices,
+    TArray<int32>& OutCounts,
+    const TArray<FPMUEdge>& InEdges,
+    bool bOpenPolygon
+    )
+{
+    OutIndices.Reset();
+    OutCounts.Reset();
+
+    typedef TDoubleLinkedList<FPMUEdge>      FEdgeList;
+    typedef FEdgeList::TDoubleLinkedListNode FEdgeListNode;
+
+    FEdgeList EdgeList;
+
+    // Generate edge list
+    for (const FPMUEdge& Edge : InEdges)
+    {
+        EdgeList.AddTail(Edge);
+    }
+
+    // Find edge on list helper struct
+    struct FEdgeHelper
+    {
+        FORCEINLINE static FEdgeListNode* FindEdge(FEdgeList& InEdgeList, int32 Index)
+        {
+            FEdgeListNode* Node = InEdgeList.GetHead();
+
+            while (Node)
+            {
+                const FPMUEdge& Edge(Node->GetValue());
+
+                if (Index == Edge.MinIndex || Index == Edge.MaxIndex)
+                {
+                    break;
+                }
+
+                Node = Node->GetNextNode();
+            }
+
+            return Node;
+        }
+    };
+
+    // Generate sorted edge list
+
+    typedef TDoubleLinkedList<uint32> FIndexList;
+
+    while (EdgeList.Num() > 0)
+    {
+        FIndexList EdgeIndexList;
+
+        EdgeIndexList.AddTail(EdgeList.GetHead()->GetValue().MinIndex);
+        EdgeIndexList.AddTail(EdgeList.GetHead()->GetValue().MaxIndex);
+
+        EdgeList.RemoveNode(EdgeList.GetHead());
+
+        while (EdgeList.Num() > 0)
+        {
+            uint32 HeadIndex = EdgeIndexList.GetHead()->GetValue();
+            uint32 TailIndex = EdgeIndexList.GetTail()->GetValue();
+
+            // Find connection to end points
+            FEdgeListNode* HeadConn = FEdgeHelper::FindEdge(EdgeList, HeadIndex);
+            FEdgeListNode* TailConn = FEdgeHelper::FindEdge(EdgeList, TailIndex);
+
+            if (HeadConn)
+            {
+                const FPMUEdge& Edge(HeadConn->GetValue());
+                EdgeIndexList.AddHead(HeadIndex == Edge.MinIndex ? Edge.MaxIndex : Edge.MinIndex);
+                EdgeList.RemoveNode(HeadConn);
+            }
+
+            if (TailConn && TailConn != HeadConn)
+            {
+                const FPMUEdge& Edge(TailConn->GetValue());
+                EdgeIndexList.AddTail(TailIndex == Edge.MinIndex ? Edge.MaxIndex : Edge.MinIndex);
+                EdgeList.RemoveNode(TailConn);
+            }
+
+            // No more connection for current edge list
+            if (! HeadConn && ! TailConn)
+            {
+                break;
+            }
+        }
+
+        if (bOpenPolygon && EdgeIndexList.Num() > 1)
+        {
+            uint32 HeadIndex = EdgeIndexList.GetHead()->GetValue();
+            uint32 TailIndex = EdgeIndexList.GetTail()->GetValue();
+
+            if (HeadIndex == TailIndex)
+            {
+                EdgeIndexList.RemoveNode(EdgeIndexList.GetTail());
+            }
+        }
+
+        const int32 IndexOffset = OutIndices.Num();
+        const int32 IndexCount = EdgeIndexList.Num();
+        int32 IndexIt = 0;
+
+        OutIndices.AddUninitialized(IndexCount);
+        OutCounts.Emplace(IndexCount);
+
+        for (uint32 Index : EdgeIndexList)
+        {
+            OutIndices[IndexOffset+IndexIt] = Index;
+            ++IndexIt;
+        }
+    }
+}
+
+void UPMUMeshUtility::GatherBoundaryEdges(TArray<FPMUEdge>& OutEdges, const TArray<FPMUEdge>& InEdges)
 {
     if (InEdges.Num() < 2)
     {
